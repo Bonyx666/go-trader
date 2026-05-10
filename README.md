@@ -283,7 +283,7 @@ Historical `exchange_fee = 0` rows can be rewritten from Hyperliquid `userFills`
 
 ## Build & Deploy
 
-The canonical update path is `scripts/update.sh` — atomic `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → optional `systemctl restart`, shared by operators and the auto-update DM flow. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds.
+The canonical update path is `scripts/update.sh` — `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → atomic binary swap → optional `systemctl restart` with `/health`-and-PID verify and automatic rollback to the previous binary on failed restart. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds. `systemctl restart` drains gracefully (in-flight `--execute` / close orders complete; read-only checks cancel immediately) and exits within ~20s instead of hanging on systemd's SIGKILL.
 
 ```bash
 sudo bash scripts/update.sh --restart   # update + restart service
