@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These tests verify JSON deserialization of executor result structs, not subprocess
@@ -347,7 +349,7 @@ func TestContractSpecJSON(t *testing.T) {
 
 // These tests exercise parseHyperliquidCloseOutput directly (the pure decision
 // helper extracted from RunHyperliquidClose) so they don't depend on
-// .venv/bin/python3, which isn't installed in the Go CI job.
+// spawning Python in the Go CI job.
 
 // Case 1: clean success — exit 0, valid JSON, no error field.
 func TestParseHyperliquidCloseOutput_CleanSuccess(t *testing.T) {
@@ -587,7 +589,7 @@ func TestParseOKXPositionsOutput_MalformedJSON(t *testing.T) {
 
 // ── buildHyperliquidExecuteArgs (#592) ─────────────────────────────────────
 // These tests assert the argv contract between Go and check_hyperliquid.py
-// without invoking the subprocess (no .venv required).
+// without invoking the subprocess.
 
 func argsContains(args []string, want string) bool {
 	for _, a := range args {
@@ -700,4 +702,18 @@ func TestBuildHyperliquidExecuteArgs_OptionalFlags(t *testing.T) {
 			t.Errorf("--leverage must be omitted when leverage=0, got %v", args)
 		}
 	})
+}
+
+func TestPythonScriptTimeoutError_As(t *testing.T) {
+	var err error = &pythonScriptTimeoutError{d: 5 * time.Minute}
+	var toe *pythonScriptTimeoutError
+	if !errors.As(err, &toe) {
+		t.Fatal("errors.As failed")
+	}
+	if toe.d != 5*time.Minute {
+		t.Errorf("duration = %v, want 5m", toe.d)
+	}
+	if !strings.HasPrefix(toe.Error(), "script timed out after ") {
+		t.Errorf("Error() = %q", toe.Error())
+	}
 }

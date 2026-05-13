@@ -5,11 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"syscall"
 	"time"
 )
+
+// pythonScriptTimeoutError is returned when a Python subprocess hits its
+// deadline (runPython / runPythonWithTimeout). Callers can use errors.As.
+type pythonScriptTimeoutError struct {
+	d time.Duration
+}
+
+func (e *pythonScriptTimeoutError) Error() string {
+	return fmt.Sprintf("script timed out after %s", e.d)
+}
 
 // pythonSemaphore limits concurrent Python subprocess executions.
 var pythonSemaphore = make(chan struct{}, 4)
@@ -126,14 +135,23 @@ type HyperliquidProtectionSyncResult struct {
 // daemon entry point hasn't called initShutdownContexts (one-off CLI commands
 // and tests).
 func runPython(parentCtx context.Context, script string, args []string, stdinData []byte) ([]byte, []byte, error) {
+	return runPythonWithTimeout(parentCtx, script, args, stdinData, scriptTimeout)
+}
+
+// runPythonWithTimeout mirrors runPython but uses an explicit deadline (e.g.
+// long-running fetch scripts). Semaphore, Setpgid, stdin, and SIGKILL-on-
+// deadline behavior match runPython.
+func runPythonWithTimeout(parentCtx context.Context, script string, args []string, stdinData []byte, timeout time.Duration) ([]byte, []byte, error) {
 	pythonSemaphore <- struct{}{}
 	defer func() { <-pythonSemaphore }()
 
-	ctx, cancel := context.WithTimeout(parentCtx, scriptTimeout)
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
-	cmdArgs := append([]string{script}, args...)
-	cmd := exec.CommandContext(ctx, ".venv/bin/python3", cmdArgs...)
+	cmd, err := newPythonCommand(ctx, script, args...)
+	if err != nil {
+		return nil, nil, err
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if stdinData != nil {
 		cmd.Stdin = bytes.NewReader(stdinData)
@@ -143,12 +161,12 @@ func runPython(parentCtx context.Context, script string, args []string, stdinDat
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		if cmd.Process != nil {
 			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
-		return stdout.Bytes(), stderr.Bytes(), fmt.Errorf("script timed out after %s", scriptTimeout)
+		return stdout.Bytes(), stderr.Bytes(), &pythonScriptTimeoutError{d: timeout}
 	}
 	return stdout.Bytes(), stderr.Bytes(), err
 }
@@ -416,7 +434,7 @@ func parseHyperliquidUpdateStopLossOutput(stdout []byte, stderrStr string, runEr
 
 // parseHyperliquidExecuteOutput turns subprocess output into
 // (*HyperliquidExecuteResult, stderr, error). Extracted from RunHyperliquidExecute
-// so Go CI (no .venv) can test the parsing contract without spawning Python
+// so Go CI can test the parsing contract without spawning Python
 // — same pattern as parseHyperliquidCloseOutput (#341).
 func parseHyperliquidExecuteOutput(stdout []byte, stderrStr string, runErr error) (*HyperliquidExecuteResult, string, error) {
 	if runErr != nil {
@@ -505,7 +523,7 @@ func RunHyperliquidClose(script, symbol string, partialSz *float64, cancelStopLo
 // parseHyperliquidCloseOutput turns the raw subprocess result into
 // (*HyperliquidCloseResult, stderr, error) following the RunHyperliquidClose
 // contract. Extracted from RunHyperliquidClose so the decision logic can be
-// tested without spawning .venv/bin/python3 (absent in the Go CI job).
+// tested without spawning Python.
 func parseHyperliquidCloseOutput(stdout []byte, stderrStr string, runErr error) (*HyperliquidCloseResult, string, error) {
 	var result HyperliquidCloseResult
 	parseErr := json.Unmarshal(stdout, &result)
@@ -674,7 +692,7 @@ func RunTopStepClose(script, symbol string) (*TopStepCloseResult, string, error)
 // parseTopStepCloseOutput turns raw subprocess output into
 // (*TopStepCloseResult, stderr, error) following the RunTopStepClose
 // contract. Extracted so decision logic can be tested without spawning
-// .venv/bin/python3 — same pattern as parseHyperliquidCloseOutput /
+// Python — same pattern as parseHyperliquidCloseOutput /
 // parseOKXCloseOutput / parseRobinhoodCloseOutput (#341/#342/#345/#346).
 func parseTopStepCloseOutput(stdout []byte, stderrStr string, runErr error) (*TopStepCloseResult, string, error) {
 	var result TopStepCloseResult
@@ -986,8 +1004,7 @@ func RunOKXClose(script, symbol string, partialSz *float64) (*OKXCloseResult, st
 // parseOKXCloseOutput turns raw subprocess output into
 // (*OKXCloseResult, stderr, error) following the RunOKXClose contract.
 // Extracted so the decision logic can be tested without spawning
-// .venv/bin/python3 (absent in the Go CI job — same reason as
-// parseHyperliquidCloseOutput, #341/#342).
+// Python (same reason as parseHyperliquidCloseOutput, #341/#342).
 func parseOKXCloseOutput(stdout []byte, stderrStr string, runErr error) (*OKXCloseResult, string, error) {
 	var result OKXCloseResult
 	parseErr := json.Unmarshal(stdout, &result)
@@ -1094,9 +1111,9 @@ func RunOKXFetchBalance(script string) (*OKXBalanceResult, string, error) {
 }
 
 // parseOKXBalanceOutput is the pure parser for RunOKXFetchBalance. Extracted
-// so the decision logic can be tested without spawning .venv/bin/python3
-// (absent in the Go CI job). Mirrors parseOKXPositionsOutput's 5-case
-// matrix — contract drift across fetch parsers would be bad.
+// so the decision logic can be tested without spawning Python. Mirrors
+// parseOKXPositionsOutput's 5-case matrix — contract drift across fetch
+// parsers would be bad.
 func parseOKXBalanceOutput(stdout []byte, stderrStr string, runErr error) (*OKXBalanceResult, string, error) {
 	var result OKXBalanceResult
 	parseErr := json.Unmarshal(stdout, &result)
@@ -1165,7 +1182,7 @@ func RunRobinhoodClose(script, symbol string) (*RobinhoodCloseResult, string, er
 // parseRobinhoodCloseOutput turns raw subprocess output into
 // (*RobinhoodCloseResult, stderr, error) following the RunRobinhoodClose
 // contract. Extracted so decision logic can be tested without spawning
-// .venv/bin/python3 — same pattern as parseHyperliquidCloseOutput /
+// Python — same pattern as parseHyperliquidCloseOutput /
 // parseOKXCloseOutput (#341/#342/#345).
 func parseRobinhoodCloseOutput(stdout []byte, stderrStr string, runErr error) (*RobinhoodCloseResult, string, error) {
 	var result RobinhoodCloseResult
