@@ -290,11 +290,19 @@ Historical `exchange_fee = 0` rows can be rewritten from Hyperliquid `userFills`
 
 ## Build & Deploy
 
-The canonical update path is `scripts/update.sh` — `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → atomic binary swap → optional `systemctl restart` with `/health`-and-PID verify and automatic rollback to the previous binary on failed restart. If `go` is not on `PATH`, the script tries common install locations (`/opt/homebrew/bin/go`, then `/usr/local/go/bin/go`). With `--restart`, it warns when systemd's `ExecStart` binary is not the same file as this checkout's `./go-trader`, so you can catch a unit pointed at the wrong path before assuming the upgrade took effect. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds. `systemctl restart` drains gracefully (in-flight `--execute` / close orders complete; read-only checks cancel immediately) and exits within ~20s instead of hanging on systemd's SIGKILL.
+The canonical update path is `scripts/update.sh` — `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → atomic binary swap → optional restart with `/health`-and-PID verify and automatic rollback to the previous binary on failed restart. If `go` is not on `PATH`, the script tries common install locations (`/opt/homebrew/bin/go`, then `/usr/local/go/bin/go`). With `--restart`, it warns when systemd's `ExecStart` binary is not the same file as this checkout's `./go-trader`, so you can catch a unit pointed at the wrong path before assuming the upgrade took effect. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds. `systemctl restart` drains gracefully (in-flight `--execute` / close orders complete; read-only checks cancel immediately) and exits within ~20s instead of hanging on systemd's SIGKILL.
+
+Two restart modes are supported:
+- **`--restart-mode systemd`** (default) — `sudo systemctl restart <unit>`, polls `systemctl is-active` + `/health`.
+- **`--restart-mode signal`** — for Linux bare-process deploys without systemd. SIGTERMs the PID from a pidfile (`./go-trader.pid` by default), then respawns via a wrapper script (`./run.sh` by default) with the same `/health`+PID verify and rollback. Generate a starter wrapper with `bash scripts/create-run-sh.sh`.
+
+Use `--all` to batch-update all `go-trader-*/` sibling directories in one pass (requires `--restart`).
 
 ```bash
-sudo bash scripts/update.sh --restart   # update + restart service
-bash scripts/update.sh                  # update without restart
+sudo bash scripts/update.sh --restart                  # systemd deploy
+bash scripts/update.sh --restart --restart-mode signal # bare-process deploy
+bash scripts/update.sh --all --restart                 # update all instances
+bash scripts/update.sh                                 # build only, no restart
 ```
 
 | Change | Action |

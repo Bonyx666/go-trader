@@ -156,12 +156,23 @@ journalctl -u go-trader -n 100 --no-pager
 Manual update:
 
 ```bash
+# Systemd deploy (default)
 cd /path/to/go-trader && bash scripts/update.sh --restart
+
+# Linux bare-process deploy (no systemd)
+cd /path/to/go-trader && bash scripts/update.sh --restart --restart-mode signal
+
+# Batch-update all go-trader-* siblings at once (requires --restart)
+bash scripts/update.sh --all --restart [--update-all-root <parent-dir>]
 ```
 
 `scripts/update.sh` is the single source of truth for `git pull --ff-only` + `uv sync` + `go build` (all three steps gated under `set -euo pipefail`). External deploy automation (Ansible, image bake, etc.) should call this script rather than reproducing the steps inline — that's how asymmetric deploys land.
 
-Verify: `journalctl -u go-trader -f | grep -i "\[update\]"`.
+**Signal mode** (`--restart-mode signal` / `RESTART_MODE=signal`): SIGTERMs the PID in `GO_TRADER_PIDFILE` (default `./go-trader.pid`), respawns via `GO_TRADER_RUN_SH` (default `./run.sh`), then polls `/health` + PID freshness — same verify/rollback flow as systemd mode. Generate a starter `run.sh` with `bash scripts/create-run-sh.sh`. Signal-mode env vars: `GO_TRADER_RUN_SH`, `GO_TRADER_PIDFILE`, `GO_TRADER_SIGNAL_LOG`.
+
+**Batch mode** (`--all`): scans `GO_TRADER_UPDATE_ALL_ROOT` (default: parent of this repo) for `go-trader-*/` directories and runs the full update flow in each sequentially. Each child inherits `GO_TRADER_SERVICE` — set per-worktree env if systemd unit names differ across instances.
+
+Verify: `journalctl -u go-trader -f | grep -i "\[update\]"` (systemd) or `tail -f ./go-trader-signal.log` (signal mode).
 
 ---
 
@@ -305,6 +316,7 @@ When in doubt, treat as runtime default and prompt. Regenerate from `git log --o
 - **Open-strategy look-ahead bias fixes — amd_ifvg / liquidity_sweeps / chart_patterns (#732/#740)** — three caller strategies were peeking forward at data not yet observable: `amd_ifvg` selected entry IFVGs by distance to the **day's final close**; `liquidity_sweeps` read swing classification before the centered confirmation window completed; `chart_patterns` started breakout search at `swing_bar+1` instead of `swing_bar+lookback+1`. All three now respect the closed-bar contract. Backtest deltas (BTC/USDT, single mode, default params): `amd_ifvg` 15m Return -79.02% → -57.04%, Sharpe -0.81 → -0.36, PF 0.607 → 0.880 — the day-final-close peek was a confounder, not edge. `liquidity_sweeps` 1h slightly worse (-52.40 → -55.14). `chart_pattern` 1h slightly worse (-1.94 → -4.25). Regression tests added for all three. No operator action; live behavior unaffected (live signal generation never had access to forward bars), but backtest comparisons against pre-fix runs will differ.
 - **Revert uv subprocess wrapper (#752/#753)** — PR #748's `uv run` subprocess path broke servers where `uv` is not on systemd's restricted PATH (default `curl | sh` installs go to `~/.local/bin`, which systemd's default `PATH` omits). Reverted to `.venv/bin/python3` in `executor.go` and `version_probe.go`; `scheduler/python_cmd.go` (`newPythonCommand`/`GO_TRADER_UV`) deleted; service units no longer inject `PATH`/`UV_CACHE_DIR`; `scripts/install-service.sh` no longer pre-creates the uv cache dir. `runPythonWithTimeout` and `pythonScriptTimeoutError` retained (still used by `backfill_hl_fees.go`). No operator action; behavior identical to pre-#748.
 - **Discord category-summary TP tiers show ATR multiples (#763)** — open-position lines in hourly/per-channel summaries append a `%g`-formatted `(Nx)` suffix on each TP tier (same convention as trade-alert extras), so summary TP lines match trade DMs. No operator action.
+- **Update.sh signal-mode restart + batch update (#766/#767)** — `scripts/update.sh` now supports two restart modes. Default `--restart-mode systemd` unchanged. New `--restart-mode signal` (or `RESTART_MODE=signal`) for Linux bare-process deploys: SIGTERMs the PID from `GO_TRADER_PIDFILE` (default `./go-trader.pid`), respawns via `GO_TRADER_RUN_SH` (default `./run.sh`), then polls `/health` + PID freshness with same verify/rollback flow as systemd mode. Generate a starter `run.sh` via `bash scripts/create-run-sh.sh`. New `--all` flag (requires `--restart`) batch-updates all `go-trader-*/` directories under `GO_TRADER_UPDATE_ALL_ROOT` (default: parent of repo). New env: `GO_TRADER_RUN_SH`, `GO_TRADER_PIDFILE`, `GO_TRADER_SIGNAL_LOG`, `GO_TRADER_UPDATE_ALL_ROOT`. Operator action: none for existing systemd deploys. Signal-mode operators: create `run.sh` with `scripts/create-run-sh.sh`, set `RESTART_MODE=signal` or pass `--restart-mode signal`.
 
 **Open-position constraint**
 - `margin_mode`, exchange `leverage`, kill-switch identity changes
