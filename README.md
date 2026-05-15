@@ -290,7 +290,7 @@ Historical `exchange_fee = 0` rows can be rewritten from Hyperliquid `userFills`
 
 ## Build & Deploy
 
-The canonical update path is `scripts/update.sh` — `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → atomic binary swap → optional `systemctl restart` with `/health`-and-PID verify and automatic rollback to the previous binary on failed restart. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds. `systemctl restart` drains gracefully (in-flight `--execute` / close orders complete; read-only checks cancel immediately) and exits within ~20s instead of hanging on systemd's SIGKILL.
+The canonical update path is `scripts/update.sh` — `git pull --ff-only` → `uv sync` → `go build` (version-stamped) → atomic binary swap → optional `systemctl restart` with `/health`-and-PID verify and automatic rollback to the previous binary on failed restart. If `go` is not on `PATH`, the script tries common install locations (`/opt/homebrew/bin/go`, then `/usr/local/go/bin/go`). With `--restart`, it warns when systemd's `ExecStart` binary is not the same file as this checkout's `./go-trader`, so you can catch a unit pointed at the wrong path before assuming the upgrade took effect. A startup compatibility probe refuses to launch on a Go/Python version mismatch, so prefer the script over hand-rolled rebuilds. `systemctl restart` drains gracefully (in-flight `--execute` / close orders complete; read-only checks cancel immediately) and exits within ~20s instead of hanging on systemd's SIGKILL.
 
 ```bash
 sudo bash scripts/update.sh --restart   # update + restart service
