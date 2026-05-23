@@ -322,11 +322,23 @@ When in doubt, treat as runtime default and prompt. Regenerate from `git log --o
 - **HL /info burst mitigation (#768/#769)** — HL adapter now caches `spot_meta`+`meta` to `/tmp/hl_meta.json` (60-min TTL) shared across all go-trader instances on the host; symbol-miss forces a fresh fetch. Go forwards `allMids` snapshot via `--mark-price` to skip a duplicate `get_spot_price` call, and `clearinghouseState` leverage/margin-mode via `--account-leverage`/`--account-margin-mode` to skip a per-cycle `get_position_leverage` call. 429 from `lookup_fill_fee_by_oid` returns `{}` immediately instead of retrying; modeled-fee fallback preserves bookkeeping. `executeProbeArgv` added to probe `check_hyperliquid.py` in execute mode at startup (asymmetric deploys fail fast). Fires automatically — no operator action.
 - **Two-leg pairs backtester (#771)** — new `backtest/backtest_pairs.py` (`PairsBacktester`): standalone simulator for beta-hedged long/short pairs driven by rolling z-score of log spread. Research/analysis tool only — no live execution path. No operator action.
 - **`invert_signal` for HL perps/manual (#774/#776)** — new `StrategyConfig.InvertSignal bool` field (`invert_signal`): flips BUY↔SELL on non-zero signals from `runHyperliquidCheck` before execution. Lets inverse-trend variants reuse the same open/close strategy refs without forking the Python module. HOLD (0) never flipped. Composes with `direction`: invert runs in the Go layer before direction interprets the resulting sign, so `direction="short"` + `invert_signal=true` is valid and distinct from plain `direction="short"` (opens short on raw-BUY vs. raw-SELL respectively). Rejected only on non-HL-perps/manual strategies. SIGHUP-blocked while positions are open. Default off; opt in by setting `invert_signal: true`.
+- **Regime-aware directional policy `regime_directional_policy` (#779/#780)** — new `StrategyConfig.RegimeDirectionalPolicy` field: per-regime override for `direction` + `invert_signal` so a single HL perps strategy automatically switches long/short/inverse mode as the market regime changes, without operator SIGHUP or hot-edits. Shape:
+  ```json
+  "regime_directional_policy": {
+    "trend_regime": {
+      "trending_up":   { "direction": "long",  "invert_signal": false },
+      "trending_down": { "direction": "short", "invert_signal": true },
+      "ranging":       { "direction": "long",  "invert_signal": false }
+    }
+  }
+  ```
+  All three canonical labels (`trending_up`, `trending_down`, `ranging`) required — no undefined runtime fallback. **Resolver semantics:** when flat, resolves from current cycle's regime (fresh entry decision); when a position is open, resolves from `pos.Regime` stamped at open ("hold until natural exit" — the position runs under the policy it opened with until natural SL/TP/close-evaluator exit; new entries in the opposing direction never fire because `PerpsOrderSkipReason` gates on the resolved `Direction`). `base_direction`/`base_invert_signal` remain the static fallback when the block is absent or regime detection disabled. Requires `regime.enabled=true` at top level. HL perps only. SIGHUP: shape add/remove/mutate blocked while a position is open; change-when-flat applies on next cycle. `/status` surfaces `base_direction`, `base_invert_signal`, `effective_direction`, `effective_invert_signal`, `regime_directional_policy` (bool flag), `effective_policy_regime` per strategy. Backtester rejects via `run_backtest.py` (use static `direction`/`invert_signal` for backtesting). Default off; opt in by adding the block.
 
 **Open-position constraint**
 - `margin_mode`, exchange `leverage`, kill-switch identity changes
 - HL `trailing_stop_atr_mult` / `stop_loss_atr_mult` nil↔positive toggle blocked while open
 - `invert_signal` toggle blocked while open
+- `regime_directional_policy` add/remove/shape change blocked while open (flatten first or restart after close)
 
 ---
 
@@ -628,6 +640,7 @@ Per-strategy:
 | Close strategy params | `close_strategies[i].params` | Per-close evaluator overrides (e.g. `tiered_tp_atr.tiers`); each ref carries its own params so they don't leak into the open strategy |
 | Direction | `direction` | Perps gate: `"long"` (default), `"short"` (#656 — open shorts only), or `"both"` (bidirectional). Replaces legacy `allow_shorts`; v14 migration converts `false→"long"`, `true→"both"`. SIGHUP-aware when flat. |
 | Invert signal | `invert_signal` | HL perps/manual only. `true` flips BUY↔SELL on every non-zero signal; HOLD (0) never flipped. Allows inverse-trend use of any open strategy without a new Python module. Composes with `direction="short"` (opens short on raw-BUY, distinct from plain short-direction which opens on raw-SELL). SIGHUP-blocked while open. Default `false`. |
+| Regime directional policy | `regime_directional_policy` | HL perps only. Per-regime `direction`+`invert_signal` override that auto-switches long/short/inverse mode as market regime changes. Requires `regime.enabled=true`; all three canonical regime labels required. When flat, resolves from current regime; while a position is open, resolves from `pos.Regime` at open (hold-on-transition). SIGHUP blocks shape changes while open. `base_direction`/`effective_direction` visible in `/status`. Backtester rejects (HL-live-only). |
 | Stop loss (price %) | `stop_loss_pct` | HL perps. Sole-owner auto-derives from `max_drawdown_pct` (cap 50) when omitted; same-coin peers need one explicit positive owner. `0` opts out. |
 | Stop loss (margin %) | `stop_loss_margin_pct` | HL perps — leverage-aware; mutually exclusive with the other four owners. `0` opts out. |
 | Fixed ATR stop | `stop_loss_atr_mult` | HL perps — trigger `avg_cost ± mult × entry_atr`, armed once after open. Top-level `default_stop_loss_atr_mult` defaults to `1.0` and applies to every HL perps with all five stop fields omitted (incl. shared-coin peers since #601) (#562/#601/#605); per-strategy `0` or top-level `0` restores `max_drawdown_pct` fallback. |
