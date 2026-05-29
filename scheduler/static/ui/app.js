@@ -12,6 +12,7 @@
     list: document.getElementById("strategy-list"),
     search: document.getElementById("strategy-search"),
     title: document.getElementById("active-title"),
+    regimeBadge: document.getElementById("regime-badge"),
     subtitle: document.getElementById("active-subtitle"),
     chart: document.getElementById("chart"),
     empty: document.getElementById("empty-chart"),
@@ -157,9 +158,41 @@
     if (candles.length) state.chart.timeScale().fitContent();
   }
 
+  function humanizeRegimeLabel(label) {
+    return String(label).replace(/_/g, " ");
+  }
+
+  function regimeBadgeClass(label) {
+    const key = String(label || "").toLowerCase();
+    if (key === "trending_up" || key === "strong_trend_up" || key === "bull") {
+      return "regime-badge--bull";
+    }
+    if (key === "trending_down" || key === "strong_trend_down" || key === "bear") {
+      return "regime-badge--bear";
+    }
+    if (key === "ranging" || key === "weak_trend" || key === "neutral" || key === "default") {
+      return "regime-badge--neutral";
+    }
+    return "regime-badge--unknown";
+  }
+
+  function updateRegimeBadge(regime) {
+    const label = String(regime || "").trim();
+    if (!label || label === "-") {
+      els.regimeBadge.hidden = true;
+      els.regimeBadge.textContent = "";
+      els.regimeBadge.className = "regime-badge";
+      return;
+    }
+    els.regimeBadge.className = "regime-badge " + regimeBadgeClass(label);
+    els.regimeBadge.textContent = humanizeRegimeLabel(label);
+    els.regimeBadge.hidden = false;
+  }
+
   async function refreshStatus() {
     if (!state.activeID) return;
     const status = await getJSON("/api/strategies/" + encodeURIComponent(state.activeID) + "/status");
+    updateRegimeBadge(status.regime);
     els.statusDot.className = "status-dot ok";
     els.statusLabel.textContent = "Live";
     const fields = [
