@@ -8,7 +8,10 @@
     chart: null,
     series: null,
     timer: 0,
+    sparklines: {},
   };
+
+  const SPARKLINE_LIMIT = 40;
 
   const els = {
     count: document.getElementById("strategy-count"),
@@ -206,12 +209,16 @@
     }, {});
   }
 
-  function renderStrategies() {
+  function filteredStrategies() {
     const query = els.search.value.trim().toLowerCase();
-    const filtered = state.strategies.filter(function (s) {
+    return state.strategies.filter(function (s) {
       const haystack = [s.id, s.platform, s.symbol, s.timeframe, s.strategy].join(" ").toLowerCase();
       return haystack.includes(query);
     });
+  }
+
+  function renderStrategies() {
+    const filtered = filteredStrategies();
     els.count.textContent = filtered.length + " strategies";
     els.list.innerHTML = "";
     const groups = groupStrategies(filtered);
@@ -226,7 +233,10 @@
         button.type = "button";
         button.dataset.id = strategy.id;
         button.innerHTML =
-          '<span class="strategy-id"></span><span class="strategy-symbol"></span><span class="strategy-meta"></span>';
+          '<span class="strategy-id"></span>' +
+          '<canvas class="strategy-sparkline" width="48" height="28" aria-hidden="true"></canvas>' +
+          '<span class="strategy-symbol"></span>' +
+          '<span class="strategy-meta"></span>';
         button.querySelector(".strategy-id").textContent = strategy.id;
         button.querySelector(".strategy-symbol").textContent = strategy.symbol || "-";
         button.querySelector(".strategy-meta").textContent =
@@ -235,8 +245,72 @@
           selectStrategy(strategy.id);
         });
         els.list.appendChild(button);
+        const cached = state.sparklines[strategy.id];
+        if (cached) {
+          drawSparkline(button.querySelector(".strategy-sparkline"), cached);
+        }
       });
     });
+    loadSparklines(filtered.map(function (s) {
+      return s.id;
+    }));
+  }
+
+  function drawSparkline(canvas, points) {
+    if (!canvas || !points || points.length < 2) {
+      return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || 48;
+    const cssH = canvas.clientHeight || 28;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const values = points.map(function (p) {
+      return Number(p.v);
+    });
+    const min = Math.min.apply(null, values);
+    const max = Math.max.apply(null, values);
+    const span = max - min || 1;
+    const pad = 2;
+    const up = values[values.length - 1] >= values[0];
+    const color = up ? "#0f8a5f" : "#c23b3b";
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    values.forEach(function (value, index) {
+      const x = pad + (index / (values.length - 1)) * (cssW - pad * 2);
+      const y = pad + (1 - (value - min) / span) * (cssH - pad * 2);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  async function loadSparklines(ids) {
+    const unique = Array.from(new Set(ids));
+    await Promise.all(unique.map(async function (id) {
+      try {
+        const resp = await getJSON(
+          "/api/strategies/" + encodeURIComponent(id) + "/equity?limit=" + SPARKLINE_LIMIT
+        );
+        const points = resp.points || [];
+        state.sparklines[id] = points;
+        const button = els.list.querySelector('.strategy-button[data-id="' + CSS.escape(id) + '"]');
+        if (button) {
+          drawSparkline(button.querySelector(".strategy-sparkline"), points);
+        }
+      } catch (_err) {
+        // Sidebar sparklines are best-effort; ignore per-strategy failures.
+      }
+    }));
   }
 
   function activeStrategy() {
@@ -377,7 +451,13 @@
 
   async function refreshAll() {
     try {
-      await Promise.all([refreshChart(), refreshStatus()]);
+      await Promise.all([
+        refreshChart(),
+        refreshStatus(),
+        loadSparklines(filteredStrategies().map(function (s) {
+          return s.id;
+        })),
+      ]);
     } catch (err) {
       if (err.status === 401) {
         showAuthPrompt();
@@ -392,7 +472,14 @@
   function scheduleRefresh() {
     if (state.timer) clearInterval(state.timer);
     const ms = Number(els.interval.value);
-    if (ms > 0) state.timer = setInterval(refreshStatus, ms);
+    if (ms > 0) {
+      state.timer = setInterval(function () {
+        refreshStatus();
+        loadSparklines(filteredStrategies().map(function (s) {
+          return s.id;
+        }));
+      }, ms);
+    }
   }
 
   function fmtMoney(value) {
