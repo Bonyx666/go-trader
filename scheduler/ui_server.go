@@ -57,6 +57,10 @@ type UIEquityPoint struct {
 	V float64 `json:"v"`
 }
 
+// uiEquityLookbackLimit caps closed-position rows for dashboard equity curves (#805).
+// Independent of sharpeLookbackLimit so Sharpe tuning does not shrink sparklines.
+const uiEquityLookbackLimit = 500
+
 type UITradeMarker struct {
 	Time        int64   `json:"time"`
 	Position    string  `json:"position"`
@@ -357,7 +361,7 @@ func (ss *StatusServer) handleAPIStrategyStatus(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	prices := make(map[string]float64)
+	prices := ss.fetchLiveMarkPrices()
 	pv := PortfolioValue(&snapshot, prices)
 	initCap := EffectiveInitialCapital(sc, &snapshot)
 	pnl := pv - initCap
@@ -428,19 +432,17 @@ func (ss *StatusServer) handleAPIStrategyEquity(w http.ResponseWriter, r *http.R
 	}
 
 	initCap := EffectiveInitialCapital(sc, &snapshot)
-	pv := PortfolioValue(&snapshot, map[string]float64{})
+	prices := ss.fetchLiveMarkPrices()
+	pv := PortfolioValue(&snapshot, prices)
 
-	closed := []ClosedPosition{}
+	var closed []ClosedPosition
 	if ss.stateDB != nil {
-		rows, _, err := ss.stateDB.QueryClosedPositions(id, "", time.Time{}, time.Time{}, sharpeLookbackLimit, 0)
+		rows, _, err := ss.stateDB.QueryClosedPositions(id, "", time.Time{}, time.Time{}, uiEquityLookbackLimit, 0)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		closed = make([]ClosedPosition, len(rows))
-		for i := len(rows) - 1; i >= 0; i-- {
-			closed[len(rows)-1-i] = rows[i]
-		}
+		closed = rows
 	}
 
 	limit := parseUIEquityLimit(r)

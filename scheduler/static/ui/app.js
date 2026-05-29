@@ -12,7 +12,6 @@
   };
 
   const SPARKLINE_LIMIT = 40;
-  const SPARKLINE_FETCH_CAP = 30;
 
   const els = {
     count: document.getElementById("strategy-count"),
@@ -296,7 +295,7 @@
   }
 
   async function loadSparklines(ids) {
-    const unique = Array.from(new Set(ids)).slice(0, SPARKLINE_FETCH_CAP);
+    const unique = Array.from(new Set(ids));
     await Promise.all(unique.map(async function (id) {
       try {
         const resp = await getJSON(
@@ -452,7 +451,13 @@
 
   async function refreshAll() {
     try {
-      await Promise.all([refreshChart(), refreshStatus()]);
+      await Promise.all([
+        refreshChart(),
+        refreshStatus(),
+        loadSparklines(filteredStrategies().map(function (s) {
+          return s.id;
+        })),
+      ]);
     } catch (err) {
       if (err.status === 401) {
         showAuthPrompt();
@@ -467,7 +472,14 @@
   function scheduleRefresh() {
     if (state.timer) clearInterval(state.timer);
     const ms = Number(els.interval.value);
-    if (ms > 0) state.timer = setInterval(refreshStatus, ms);
+    if (ms > 0) {
+      state.timer = setInterval(function () {
+        refreshStatus();
+        loadSparklines(filteredStrategies().map(function (s) {
+          return s.id;
+        }));
+      }, ms);
+    }
   }
 
   function fmtMoney(value) {

@@ -257,68 +257,7 @@ func (ss *StatusServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Always fetch prices for all configured spot symbols + any with open
-	// positions (in case config changed). Perps marks come from venue-native
-	// fetchers below (#263), not BinanceUS, so we only pull spot symbols here.
-	symbolSet := make(map[string]bool)
-	for _, sym := range ss.priceSymbols {
-		symbolSet[sym] = true
-	}
-	ss.mu.RLock()
-	for _, s := range ss.state.Strategies {
-		for sym := range s.Positions {
-			// Include only spot-style keys (contain "/") to avoid routing
-			// HL/OKX perps position keys through BinanceUS (#263).
-			if strings.Contains(sym, "/") {
-				symbolSet[sym] = true
-			}
-		}
-	}
-	ss.mu.RUnlock()
-
-	symbols := make([]string, 0, len(symbolSet))
-	for s := range symbolSet {
-		symbols = append(symbols, s)
-	}
-
-	// Fetch live prices WITHOUT holding the lock.
-	prices := make(map[string]float64)
-	if len(symbols) > 0 {
-		p, err := FetchPrices(symbols)
-		if err == nil {
-			prices = p
-		}
-	}
-	// HL perps marks — venue-native oracle (#263). Best-effort.
-	if len(ss.hlPerpsCoins) > 0 {
-		if hlMarks, err := fetchHyperliquidMids(ss.hlPerpsCoins); err == nil {
-			mergePerpsMarks(prices, hlMarks)
-		} else {
-			ss.logHLPerpsErrThrottled(err)
-		}
-	}
-	// OKX perps marks — venue-native oracle (#263). Best-effort.
-	if len(ss.okxPerpsCoins) > 0 {
-		if okxMarks, err := fetchOKXPerpsMids(ss.okxPerpsCoins); err == nil {
-			mergePerpsMarks(prices, okxMarks)
-		} else {
-			ss.logOKXPerpsErrThrottled(err)
-		}
-	}
-	// Fetch CME futures marks on their separate rail (#261). Best-effort:
-	// on error, open futures positions fall back to pos.AvgCost. Errors are
-	// throttle-logged so repeated /status polls don't spam on a sustained
-	// outage, but the first failure (and periodic reminders) remain visible.
-	if len(ss.futuresSymbols) > 0 {
-		if marks, mode, err := FetchFuturesMarks(ss.futuresSymbols); err == nil {
-			if mode == FuturesMarkModePaperFallback {
-				ss.logFuturesModeThrottled()
-			}
-			mergeFuturesMarks(prices, marks)
-		} else {
-			ss.logFuturesErrThrottled(err)
-		}
-	}
+	prices := ss.fetchLiveMarkPrices()
 
 	// Re-acquire read lock to build the response
 	ss.mu.RLock()
@@ -443,6 +382,61 @@ func (ss *StatusServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// fetchLiveMarkPrices returns best-effort mark prices for /status and dashboard
+// API handlers. Call without holding ss.mu.
+func (ss *StatusServer) fetchLiveMarkPrices() map[string]float64 {
+	symbolSet := make(map[string]bool)
+	for _, sym := range ss.priceSymbols {
+		symbolSet[sym] = true
+	}
+	ss.mu.RLock()
+	for _, s := range ss.state.Strategies {
+		for sym := range s.Positions {
+			if strings.Contains(sym, "/") {
+				symbolSet[sym] = true
+			}
+		}
+	}
+	ss.mu.RUnlock()
+
+	symbols := make([]string, 0, len(symbolSet))
+	for s := range symbolSet {
+		symbols = append(symbols, s)
+	}
+
+	prices := make(map[string]float64)
+	if len(symbols) > 0 {
+		if p, err := FetchPrices(symbols); err == nil {
+			prices = p
+		}
+	}
+	if len(ss.hlPerpsCoins) > 0 {
+		if hlMarks, err := fetchHyperliquidMids(ss.hlPerpsCoins); err == nil {
+			mergePerpsMarks(prices, hlMarks)
+		} else {
+			ss.logHLPerpsErrThrottled(err)
+		}
+	}
+	if len(ss.okxPerpsCoins) > 0 {
+		if okxMarks, err := fetchOKXPerpsMids(ss.okxPerpsCoins); err == nil {
+			mergePerpsMarks(prices, okxMarks)
+		} else {
+			ss.logOKXPerpsErrThrottled(err)
+		}
+	}
+	if len(ss.futuresSymbols) > 0 {
+		if marks, mode, err := FetchFuturesMarks(ss.futuresSymbols); err == nil {
+			if mode == FuturesMarkModePaperFallback {
+				ss.logFuturesModeThrottled()
+			}
+			mergeFuturesMarks(prices, marks)
+		} else {
+			ss.logFuturesErrThrottled(err)
+		}
+	}
+	return prices
 }
 
 func (ss *StatusServer) handleHistory(w http.ResponseWriter, r *http.Request) {
