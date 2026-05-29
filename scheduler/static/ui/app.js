@@ -15,6 +15,8 @@
     subtitle: document.getElementById("active-subtitle"),
     chart: document.getElementById("chart"),
     empty: document.getElementById("empty-chart"),
+    darkToggle: document.getElementById("dark-mode-toggle"),
+    darkIcon: document.getElementById("dark-mode-icon"),
     refresh: document.getElementById("refresh-button"),
     interval: document.getElementById("refresh-interval"),
     statusDot: document.getElementById("status-dot"),
@@ -41,21 +43,58 @@
     return res.json();
   }
 
-  function initChart() {
-    if (state.chart) return;
-    state.chart = LightweightCharts.createChart(els.chart, {
+  function isDarkMode() {
+    return document.documentElement.classList.contains("dark");
+  }
+
+  function chartThemeOptions() {
+    const dark = isDarkMode();
+    return {
       layout: {
-        background: { type: "solid", color: "#ffffff" },
-        textColor: "#334139",
+        background: { type: "solid", color: dark ? "#1a211c" : "#ffffff" },
+        textColor: dark ? "#c5cec8" : "#334139",
       },
       grid: {
-        vertLines: { color: "#eef1eb" },
-        horzLines: { color: "#eef1eb" },
+        vertLines: { color: dark ? "#2b342f" : "#eef1eb" },
+        horzLines: { color: dark ? "#2b342f" : "#eef1eb" },
       },
-      rightPriceScale: { borderColor: "#d8ddd2" },
-      timeScale: { borderColor: "#d8ddd2", timeVisible: true },
+      rightPriceScale: { borderColor: dark ? "#3a4540" : "#d8ddd2" },
+      timeScale: { borderColor: dark ? "#3a4540" : "#d8ddd2" },
+    };
+  }
+
+  function applyChartTheme() {
+    if (!state.chart) return;
+    state.chart.applyOptions(chartThemeOptions());
+  }
+
+  function updateDarkModeToggle() {
+    const dark = isDarkMode();
+    els.darkToggle.setAttribute("aria-pressed", dark ? "true" : "false");
+    els.darkToggle.title = dark ? "Light mode" : "Dark mode";
+    els.darkIcon.textContent = dark ? "☀" : "☾";
+  }
+
+  function setDarkMode(enabled) {
+    document.documentElement.classList.toggle("dark", enabled);
+    try {
+      window.localStorage.setItem("goTraderDarkMode", enabled ? "1" : "0");
+    } catch (e) {}
+    updateDarkModeToggle();
+    applyChartTheme();
+  }
+
+  function initDarkMode() {
+    updateDarkModeToggle();
+    applyChartTheme();
+  }
+
+  function initChart() {
+    if (state.chart) return;
+    state.chart = LightweightCharts.createChart(els.chart, Object.assign({
+      timeScale: { timeVisible: true },
       crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    });
+    }, chartThemeOptions()));
     state.series = state.chart.addCandlestickSeries({
       upColor: "#0f8a5f",
       downColor: "#c23b3b",
@@ -256,6 +295,7 @@
   }
 
   async function boot() {
+    initDarkMode();
     initChart();
     const resp = await getJSON("/api/strategies");
     state.strategies = resp.strategies || [];
@@ -267,6 +307,9 @@
   }
 
   els.search.addEventListener("input", renderStrategies);
+  els.darkToggle.addEventListener("click", function () {
+    setDarkMode(!isDarkMode());
+  });
   els.refresh.addEventListener("click", refreshAll);
   els.interval.addEventListener("change", scheduleRefresh);
   els.authPanel.addEventListener("submit", function (event) {

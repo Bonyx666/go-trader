@@ -4,6 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>go-trader dashboard</title>
+    <script>
+      (function () {
+        try {
+          if (window.localStorage.getItem("goTraderDarkMode") === "1") {
+            document.documentElement.classList.add("dark");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="/dashboard/styles.css">
   </head>
   <body>
@@ -30,6 +39,9 @@
             <p id="active-subtitle">Select a strategy</p>
           </div>
           <div class="toolbar">
+            <button id="dark-mode-toggle" class="icon-button" type="button" title="Dark mode" aria-label="Toggle dark mode" aria-pressed="false">
+              <span id="dark-mode-icon" aria-hidden="true">☾</span>
+            </button>
             <button id="refresh-button" class="icon-button" title="Refresh" aria-label="Refresh">
               <span aria-hidden="true">R</span>
             </button>
