@@ -64,6 +64,7 @@ type UITradeMarker struct {
 	Quantity    float64 `json:"quantity"`
 	RealizedPnL float64 `json:"realized_pnl,omitempty"`
 	Details     string  `json:"details,omitempty"`
+	Regime      string  `json:"regime,omitempty"`
 }
 
 func (ss *StatusServer) rejectIfDraining(w http.ResponseWriter) bool {
@@ -323,6 +324,7 @@ func (ss *StatusServer) handleAPIStrategyTrades(w http.ResponseWriter, r *http.R
 	writeJSON(w, map[string]interface{}{
 		"strategy_id": id,
 		"markers":     markers,
+		"trades":      tradeMarkersForTable(markers),
 		"total":       total,
 	})
 }
@@ -446,6 +448,7 @@ func tradeMarkers(trades []Trade) []UITradeMarker {
 			Quantity:    tr.Quantity,
 			RealizedPnL: tr.RealizedPnL,
 			Details:     tr.Details,
+			Regime:      tr.Regime,
 		}
 		if tr.IsClose {
 			m.Position = "aboveBar"
@@ -465,6 +468,16 @@ func tradeMarkers(trades []Trade) []UITradeMarker {
 		}
 		out = append(out, m)
 	}
+	return out
+}
+
+// tradeMarkersForTable returns markers oldest-first for table display (#808).
+func tradeMarkersForTable(markers []UITradeMarker) []UITradeMarker {
+	if len(markers) == 0 {
+		return nil
+	}
+	out := make([]UITradeMarker, len(markers))
+	copy(out, markers)
 	return out
 }
 

@@ -14,7 +14,11 @@
     title: document.getElementById("active-title"),
     subtitle: document.getElementById("active-subtitle"),
     chart: document.getElementById("chart"),
+    chartWrap: document.querySelector(".chart-wrap"),
     empty: document.getElementById("empty-chart"),
+    tradeHistoryBody: document.getElementById("trade-history-body"),
+    tradeHistoryEmpty: document.getElementById("trade-history-empty"),
+    tradeHistoryTable: document.querySelector(".trade-history-table"),
     refresh: document.getElementById("refresh-button"),
     interval: document.getElementById("refresh-interval"),
     statusDot: document.getElementById("status-dot"),
@@ -65,9 +69,10 @@
       wickDownColor: "#c23b3b",
     });
     new ResizeObserver(function () {
-      const rect = els.chart.getBoundingClientRect();
+      const target = els.chartWrap || els.chart;
+      const rect = target.getBoundingClientRect();
       state.chart.resize(Math.max(320, rect.width), Math.max(320, rect.height));
-    }).observe(els.chart);
+    }).observe(els.chartWrap || els.chart);
   }
 
   function groupStrategies(strategies) {
@@ -155,6 +160,81 @@
     }));
     els.empty.style.display = candles.length ? "none" : "flex";
     if (candles.length) state.chart.timeScale().fitContent();
+    renderTradeHistory(tradeResp.trades || tradeResp.markers || []);
+  }
+
+  function tradeRowsForDisplay(rows) {
+    const list = (rows || []).slice();
+    list.reverse();
+    return list;
+  }
+
+  function tradeSideLabel(trade) {
+    if (trade.text) return trade.text;
+    if (!trade.side) return "-";
+    return trade.is_close ? "CLOSE" : String(trade.side).toUpperCase();
+  }
+
+  function tradeSideClass(trade) {
+    const label = tradeSideLabel(trade);
+    if (label === "BUY") return "trade-history-side-buy";
+    if (label === "SELL") return "trade-history-side-sell";
+    if (label === "CLOSE") {
+      return String(trade.side).toLowerCase() === "buy" ? "trade-history-side-buy" : "trade-history-side-sell";
+    }
+    return "";
+  }
+
+  function tradePnLCell(trade) {
+    if (!trade.is_close) return "-";
+    if (trade.realized_pnl === undefined || trade.realized_pnl === null) return "-";
+    return fmtSignedMoney(trade.realized_pnl);
+  }
+
+  function tradeRowClass(trade) {
+    if (!trade.is_close || trade.realized_pnl === undefined || trade.realized_pnl === null) {
+      return "";
+    }
+    if (trade.realized_pnl > 0) return "trade-history-row pnl-win";
+    if (trade.realized_pnl < 0) return "trade-history-row pnl-loss";
+    return "trade-history-row";
+  }
+
+  function fmtTradeTime(unixSeconds) {
+    if (!unixSeconds) return "-";
+    return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function renderTradeHistory(rows) {
+    const trades = tradeRowsForDisplay(rows);
+    if (!trades.length) {
+      els.tradeHistoryBody.innerHTML = "";
+      els.tradeHistoryEmpty.hidden = false;
+      els.tradeHistoryTable.hidden = true;
+      return;
+    }
+    els.tradeHistoryEmpty.hidden = true;
+    els.tradeHistoryTable.hidden = false;
+    els.tradeHistoryBody.innerHTML = trades.map(function (trade) {
+      const sideClass = tradeSideClass(trade);
+      const rowClass = tradeRowClass(trade);
+      return (
+        "<tr class=\"" + escapeHTML(rowClass) + "\">" +
+        "<td>" + escapeHTML(fmtTradeTime(trade.time)) + "</td>" +
+        "<td class=\"" + escapeHTML(sideClass) + "\">" + escapeHTML(tradeSideLabel(trade)) + "</td>" +
+        "<td>" + escapeHTML(fmtMoney(trade.price)) + "</td>" +
+        "<td>" + escapeHTML(fmtNumber(trade.quantity)) + "</td>" +
+        "<td>" + escapeHTML(tradePnLCell(trade)) + "</td>" +
+        "<td>" + escapeHTML(trade.regime || "-") + "</td>" +
+        "<td>" + escapeHTML(trade.details || "-") + "</td>" +
+        "</tr>"
+      );
+    }).join("");
   }
 
   async function refreshStatus() {
