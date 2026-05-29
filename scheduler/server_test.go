@@ -435,6 +435,103 @@ func TestHandleAPIStrategyTradesMarkers(t *testing.T) {
 	}
 }
 
+func TestBuildEquityCurvePoints(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(24 * time.Hour)
+	t2 := t0.Add(48 * time.Hour)
+	closed := []ClosedPosition{
+		{OpenedAt: t0, ClosedAt: t1, RealizedPnL: 50},
+		{OpenedAt: t1, ClosedAt: t2, RealizedPnL: -20},
+	}
+	points := buildEquityCurvePoints(1000, closed, 1030, 10)
+	if len(points) != 4 {
+		t.Fatalf("len = %d, want 4 (start + 2 closes + current)", len(points))
+	}
+	if points[0].T != t0.Unix() || points[0].V != 1000 {
+		t.Errorf("start = %+v, want t=%d v=1000", points[0], t0.Unix())
+	}
+	if points[1].T != t1.Unix() || points[1].V != 1050 {
+		t.Errorf("after first close = %+v, want v=1050", points[1])
+	}
+	if points[2].T != t2.Unix() || points[2].V != 1030 {
+		t.Errorf("after second close = %+v, want v=1030", points[2])
+	}
+	if points[3].V != 1030 {
+		t.Errorf("final value = %v, want 1030", points[3].V)
+	}
+
+	trimmed := buildEquityCurvePoints(1000, closed, 1030, 2)
+	if len(trimmed) != 2 {
+		t.Fatalf("trimmed len = %d, want 2", len(trimmed))
+	}
+	if trimmed[0].V != 1030 || trimmed[1].V != 1030 {
+		t.Errorf("trimmed keeps most recent points, got %+v", trimmed)
+	}
+}
+
+func TestHandleAPIStrategyEquity(t *testing.T) {
+	db := openTestDB(t)
+	now := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"spot-btc": {
+				ID:             "spot-btc",
+				Type:           "spot",
+				Cash:           1010,
+				InitialCapital: 1000,
+				Positions:      map[string]*Position{},
+				ClosedPositions: []ClosedPosition{
+					{
+						StrategyID: "spot-btc", Symbol: "BTC/USDT", Quantity: 1, AvgCost: 100,
+						Side: "long", OpenedAt: now.Add(-2 * time.Hour), ClosedAt: now.Add(-time.Hour),
+						ClosePrice: 110, RealizedPnL: 10, CloseReason: "signal",
+					},
+				},
+			},
+		},
+	}
+	if err := db.SaveState(state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	var mu sync.RWMutex
+	ss := NewStatusServer(state, &mu, "", []StrategyConfig{
+		{ID: "spot-btc", Platform: "binanceus", Type: "spot", Capital: 1000, Args: []string{"sma", "BTC/USDT", "1h"}},
+	}, db)
+
+	req := httptest.NewRequest("GET", "/api/strategies/spot-btc/equity?limit=40", nil)
+	w := httptest.NewRecorder()
+	ss.handleAPIStrategy(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var resp struct {
+		StrategyID string          `json:"strategy_id"`
+		Points     []UIEquityPoint `json:"points"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.StrategyID != "spot-btc" {
+		t.Errorf("strategy_id = %q, want spot-btc", resp.StrategyID)
+	}
+	if len(resp.Points) < 2 {
+		t.Fatalf("points len = %d, want at least 2", len(resp.Points))
+	}
+	if resp.Points[0].V != 1000 {
+		t.Errorf("first point value = %v, want 1000", resp.Points[0].V)
+	}
+	foundClose := false
+	for _, p := range resp.Points {
+		if p.T == now.Add(-time.Hour).Unix() && p.V == 1010 {
+			foundClose = true
+		}
+	}
+	if !foundClose {
+		t.Errorf("missing close point at %+v", resp.Points)
+	}
+}
+
 func TestHandleAPIReturnsDraining(t *testing.T) {
 	shutdownDraining.Store(false)
 	beginDrain()

@@ -52,6 +52,11 @@ type UIStrategyStatus struct {
 	MarginMode      string                     `json:"margin_mode,omitempty"`
 }
 
+type UIEquityPoint struct {
+	T int64   `json:"t"`
+	V float64 `json:"v"`
+}
+
 type UITradeMarker struct {
 	Time        int64   `json:"time"`
 	Position    string  `json:"position"`
@@ -152,6 +157,8 @@ func (ss *StatusServer) handleAPIStrategy(w http.ResponseWriter, r *http.Request
 		ss.handleAPIStrategyTrades(w, r, id)
 	case "status":
 		ss.handleAPIStrategyStatus(w, r, id)
+	case "equity":
+		ss.handleAPIStrategyEquity(w, r, id)
 	default:
 		http.NotFound(w, r)
 	}
@@ -399,6 +406,120 @@ func (ss *StatusServer) handleAPIStrategyStatus(w http.ResponseWriter, r *http.R
 		MarginMode:      sc.MarginMode,
 	}
 	writeJSON(w, resp)
+}
+
+func (ss *StatusServer) handleAPIStrategyEquity(w http.ResponseWriter, r *http.Request, id string) {
+	sc, ok := ss.strategyConfig(id)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "strategy not found")
+		return
+	}
+
+	ss.mu.RLock()
+	strat := ss.state.Strategies[id]
+	var snapshot StrategyState
+	if strat != nil {
+		snapshot = *strat
+	}
+	ss.mu.RUnlock()
+	if strat == nil {
+		writeJSONError(w, http.StatusNotFound, "strategy state not found")
+		return
+	}
+
+	initCap := EffectiveInitialCapital(sc, &snapshot)
+	pv := PortfolioValue(&snapshot, map[string]float64{})
+
+	closed := []ClosedPosition{}
+	if ss.stateDB != nil {
+		rows, _, err := ss.stateDB.QueryClosedPositions(id, "", time.Time{}, time.Time{}, sharpeLookbackLimit, 0)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		closed = make([]ClosedPosition, len(rows))
+		for i := len(rows) - 1; i >= 0; i-- {
+			closed[len(rows)-1-i] = rows[i]
+		}
+	}
+
+	limit := parseUIEquityLimit(r)
+	points := buildEquityCurvePoints(initCap, closed, pv, limit)
+	writeJSON(w, map[string]interface{}{
+		"strategy_id": id,
+		"points":      points,
+	})
+}
+
+// buildEquityCurvePoints builds a mini equity curve from initial capital, realized
+// PnL at each closed position (ASC), and the current portfolio value.
+func buildEquityCurvePoints(initCap float64, closed []ClosedPosition, currentPV float64, limit int) []UIEquityPoint {
+	if limit <= 0 {
+		limit = 40
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	sorted := append([]ClosedPosition(nil), closed...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].ClosedAt.Equal(sorted[j].ClosedAt) {
+			return sorted[i].OpenedAt.Before(sorted[j].OpenedAt)
+		}
+		return sorted[i].ClosedAt.Before(sorted[j].ClosedAt)
+	})
+
+	points := make([]UIEquityPoint, 0, len(sorted)+2)
+	equity := initCap
+
+	var startT int64
+	if len(sorted) > 0 {
+		cp := sorted[0]
+		if !cp.OpenedAt.IsZero() {
+			startT = cp.OpenedAt.UTC().Unix()
+		} else if !cp.ClosedAt.IsZero() {
+			startT = cp.ClosedAt.UTC().Unix()
+		}
+	}
+	if startT == 0 {
+		startT = time.Now().UTC().Unix()
+	}
+	points = append(points, UIEquityPoint{T: startT, V: initCap})
+
+	for _, cp := range sorted {
+		if cp.ClosedAt.IsZero() {
+			continue
+		}
+		equity += cp.RealizedPnL
+		points = append(points, UIEquityPoint{
+			T: cp.ClosedAt.UTC().Unix(),
+			V: equity,
+		})
+	}
+
+	now := time.Now().UTC().Unix()
+	last := points[len(points)-1]
+	if last.V != currentPV || last.T != now {
+		points = append(points, UIEquityPoint{T: now, V: currentPV})
+	}
+
+	if len(points) > limit {
+		points = points[len(points)-limit:]
+	}
+	return points
+}
+
+func parseUIEquityLimit(r *http.Request) int {
+	limit := 40
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	return limit
 }
 
 func parseUITimeQuery(r *http.Request) (from, to time.Time, limit int) {
