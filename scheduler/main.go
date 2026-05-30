@@ -1808,10 +1808,10 @@ func main() {
 					pv = PortfolioValue(stratState, prices)
 					posCount := len(stratState.Positions) + len(stratState.OptionPositions)
 					cash := stratState.Cash
+					regimeLabel := stratState.Regime
 					mu.RUnlock()
 
-					logger.Info("Status: cash=$%.2f | positions=%d | value=$%.2f | trades=%d",
-						cash, posCount, pv, trades)
+					logger.Info("%s", formatStatusLine(cash, posCount, pv, trades, regimeLabel))
 
 					logger.Close()
 					lastRun[sc.ID] = time.Now()

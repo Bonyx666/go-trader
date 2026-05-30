@@ -2360,3 +2360,30 @@ func TestStopLossCloseDetailsPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatStatusLine(t *testing.T) {
+	cases := []struct {
+		name   string
+		regime string
+		want   string
+	}{
+		{
+			name:   "with regime",
+			regime: "trending_up",
+			want:   "Status: cash=$100.50 | positions=2 | value=$250.00 | trades=3 | regime=trending_up",
+		},
+		{
+			name:   "empty regime renders dash",
+			regime: "",
+			want:   "Status: cash=$100.50 | positions=2 | value=$250.00 | trades=3 | regime=-",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatStatusLine(100.50, 2, 250.0, 3, tc.regime)
+			if got != tc.want {
+				t.Errorf("formatStatusLine = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
