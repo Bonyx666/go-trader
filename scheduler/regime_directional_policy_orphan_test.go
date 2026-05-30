@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 )
 
+// Regime flip: short opened under trending_down is force-closed once current
+// regime is trending_up — intentional #822 behavior, not #779 hold-on-transition.
 func TestPerpsRegimeDirectionOrphanConflict_RegimeFlip(t *testing.T) {
 	sc := StrategyConfig{
 		ID:        "hl-test",
@@ -160,8 +163,9 @@ func TestRunRegimeDirectionOrphanCloses_BooksAndFlattens(t *testing.T) {
 	if len(ss.TradeHistory) == 0 {
 		t.Fatal("expected close trade")
 	}
-	if ss.TradeHistory[len(ss.TradeHistory)-1].Details == "" {
-		t.Fatal("expected trade details")
+	last := ss.TradeHistory[len(ss.TradeHistory)-1]
+	if !strings.Contains(last.Details, "Regime/direction flip") {
+		t.Fatalf("Details = %q, want regime-flip label", last.Details)
 	}
 }
 

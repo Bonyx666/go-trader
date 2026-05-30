@@ -2461,12 +2461,28 @@ func runPendingHyperliquidCircuitCloses(
 // (#418 review observation 4). Pass 0 if the on-chain side is unknown; the
 // trade then falls back to "sell".
 //
+// hyperliquidOnChainCloseTradeLabel maps closeReason to operator-facing text
+// in Trade.Details (distinct from ClosedPosition.CloseReason).
+func hyperliquidOnChainCloseTradeLabel(closeReason string) string {
+	switch closeReason {
+	case "circuit_breaker":
+		return "Circuit breaker on-chain close"
+	case "regime_direction_flip":
+		return "Regime/direction flip auto-close"
+	case "":
+		return "On-chain close"
+	default:
+		return closeReason + " on-chain close"
+	}
+}
+
 // Caller must hold mu.Lock(). closeReason is stamped on Trade / ClosedPosition
 // rows (defaults to "circuit_breaker" when empty).
 func applyHyperliquidCircuitCloseFill(s *StrategyState, symbol string, fillSz, fillPx, fillFee, onChainSigned float64, closeReason string) {
 	if closeReason == "" {
 		closeReason = "circuit_breaker"
 	}
+	closeLabel := hyperliquidOnChainCloseTradeLabel(closeReason)
 	if s == nil || fillSz <= 0 || fillPx <= 0 {
 		return
 	}
@@ -2490,7 +2506,7 @@ func applyHyperliquidCircuitCloseFill(s *StrategyState, symbol string, fillSz, f
 			Price:       fillPx,
 			Value:       fillSz * fillPx,
 			TradeType:   "perps",
-			Details:     fmt.Sprintf("Circuit breaker on-chain close (no virtual position), fill=%.6f fee=$%.4f", fillSz, fillFee),
+			Details:     fmt.Sprintf("%s (no virtual position), fill=%.6f fee=$%.4f", closeLabel, fillSz, fillFee),
 			ExchangeFee: exchangeFeeForTrade(fillFee, true),
 			// No virtual position to derive PnL from. Still mark as a close
 			// leg so the lifetime round-trip count (#455) reflects that the
@@ -2529,7 +2545,7 @@ func applyHyperliquidCircuitCloseFill(s *StrategyState, symbol string, fillSz, f
 		Price:             fillPx,
 		Value:             qtyClosed * fillPx,
 		TradeType:         "perps",
-		Details:           fmt.Sprintf("Circuit breaker on-chain close, PnL: $%.2f (fee $%.4f)", pnl, fillFee),
+		Details:           fmt.Sprintf("%s, PnL: $%.2f (fee $%.4f)", closeLabel, pnl, fillFee),
 		ExchangeFee:       exchangeFeeForTrade(fillFee, true),
 		IsClose:           true,
 		RealizedPnL:       pnl,

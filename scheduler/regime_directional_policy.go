@@ -21,11 +21,15 @@ package main
 // returns and result.Regime is known):
 //
 //   - When flat (posQty == 0): resolve from result.Regime (current cycle).
-//   - When a position is open (posQty > 0): resolve from pos.Regime —
-//     positions inherit the policy they were opened under and run to their
-//     natural exit (SL/TP/close evaluator). New entries opposite to the
-//     held side never fire because PerpsOrderSkipReason / perpsLiveOrderSize
-//     both gate on the resolved Direction; close evaluators always run.
+//   - When a position is open (posQty > 0): resolve from pos.Regime for
+//     signal/execution paths — positions inherit the policy they were opened
+//     under; new entries opposite the held side are blocked and close
+//     evaluators always run (PerpsOrderSkipReason / perpsLiveOrderSize).
+//   - Exception (#822): hl-sync reconcile may market-close a sole-owner live
+//     position when its side conflicts with the *current* regime direction
+//     (stratState.Regime, one cycle behind the in-flight check). That
+//     supersedes hold-on-transition for direction orphans so a regime flip
+//     cannot leave a stale side on-chain until manual intervention.
 //
 // HL perps only (mirrors invert_signal's surface, validated in config.go).
 // Static StrategyConfig.Direction / InvertSignal remain the BASE config —
@@ -389,7 +393,12 @@ func regimeDirectionOrphanEffectiveDir(stratState *StrategyState, sc StrategyCon
 
 // perpsRegimeDirectionOrphanConflict reports whether a live HL perps position
 // should be auto-closed because its side opposes what the current regime (or
-// base direction when no policy) expects now.
+// base direction when no policy) expects now. Intentionally uses current
+// regime, not pos.Regime — see package doc (#822 vs #779 hold-on-transition).
+//
+// "Current" reads stratState.Regime / RegimeWindows written in the prior
+// cycle's execute phase; reconcile runs before this cycle's check updates
+// them, so detection typically trails the flip by one scheduler cycle.
 func perpsRegimeDirectionOrphanConflict(stratState *StrategyState, sc StrategyConfig, pos *Position) (conflict bool, currentRegime, effectiveDir string) {
 	if stratState == nil || pos == nil || pos.Quantity <= 0 {
 		return false, "", ""
