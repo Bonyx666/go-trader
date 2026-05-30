@@ -1298,6 +1298,25 @@ func hyperliquidProtectionCancelOIDs(pos *Position) []int64 {
 	return oids
 }
 
+// clearHyperliquidProtectionOIDsMatching zeroes resting SL/TP OIDs on the virtual
+// position after the exchange confirms cancel (must run before the position is
+// deleted by applyHyperliquidCircuitCloseFill on a full close).
+func clearHyperliquidProtectionOIDsMatching(pos *Position, cancelOIDs []int64) {
+	if pos == nil {
+		return
+	}
+	for _, cancelOID := range cancelOIDs {
+		if cancelOID > 0 && pos.StopLossOID == cancelOID {
+			pos.StopLossOID = 0
+		}
+		for idx, tpOID := range pos.TPOIDs {
+			if cancelOID > 0 && tpOID == cancelOID {
+				pos.TPOIDs[idx] = 0
+			}
+		}
+	}
+}
+
 // runRegimeDirectionOrphanCloses drains jobs queued by hl-sync reconcile when
 // a sole-owner position conflicts with the current regime direction (#822).
 // Must run without holding mu (subprocess I/O). Caller should invoke immediately
@@ -1392,8 +1411,15 @@ func runRegimeDirectionOrphanCloses(
 		}
 
 		mu.Lock()
-		if ss := state.Strategies[job.StrategyID]; ss != nil && !alreadyFlat && fillSz > 1e-15 && fillPx > 0 {
-			applyHyperliquidCircuitCloseFill(ss, sym, fillSz, fillPx, fillFee, onChainSigned, "regime_direction_flip")
+		if ss := state.Strategies[job.StrategyID]; ss != nil {
+			if pos, ok := ss.Positions[sym]; ok && pos != nil {
+				if len(job.CancelOIDs) > 0 && result != nil && result.CancelStopLossSucceeded {
+					clearHyperliquidProtectionOIDsMatching(pos, job.CancelOIDs)
+				}
+				if !alreadyFlat && fillSz > 1e-15 && fillPx > 0 {
+					applyHyperliquidCircuitCloseFill(ss, sym, fillSz, fillPx, fillFee, onChainSigned, "regime_direction_flip")
+				}
+			}
 		}
 		mu.Unlock()
 
@@ -1402,25 +1428,6 @@ func runRegimeDirectionOrphanCloses(
 		fmt.Println("[INFO] " + info)
 		if ownerDM != nil {
 			ownerDM(info)
-		}
-
-		if len(job.CancelOIDs) > 0 && result != nil && result.CancelStopLossSucceeded {
-			mu.Lock()
-			if ss := state.Strategies[job.StrategyID]; ss != nil {
-				if pos, ok := ss.Positions[sym]; ok && pos != nil {
-					for _, cancelOID := range job.CancelOIDs {
-						if cancelOID > 0 && pos.StopLossOID == cancelOID {
-							pos.StopLossOID = 0
-						}
-						for idx, tpOID := range pos.TPOIDs {
-							if cancelOID > 0 && tpOID == cancelOID {
-								pos.TPOIDs[idx] = 0
-							}
-						}
-					}
-				}
-			}
-			mu.Unlock()
 		}
 	}
 }

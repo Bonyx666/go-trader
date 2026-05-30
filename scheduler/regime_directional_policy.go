@@ -396,6 +396,10 @@ func regimeDirectionOrphanEffectiveDir(stratState *StrategyState, sc StrategyCon
 // base direction when no policy) expects now. Intentionally uses current
 // regime, not pos.Regime — see package doc (#822 vs #779 hold-on-transition).
 //
+// Scope includes static-direction orphans (e.g. direction=long with a seeded
+// short) as well as regime-flip cases; regime.enabled is not required.
+// Direction="both" never conflicts via perpsPositionConflictsDirection.
+//
 // "Current" reads stratState.Regime / RegimeWindows written in the prior
 // cycle's execute phase; reconcile runs before this cycle's check updates
 // them, so detection typically trails the flip by one scheduler cycle.
