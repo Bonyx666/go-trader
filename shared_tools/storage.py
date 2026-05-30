@@ -12,17 +12,29 @@ import pandas as pd
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "trading_bot.db")
 
+# Paths whose schema has already been ensured this process. Lets us create
+# tables lazily on first real use instead of at import time — importing this
+# module must stay side-effect free so it works under read-only sandboxes
+# (e.g. systemd ProtectSystem=strict during the startup probe).
+_SCHEMA_READY: set = set()
 
-def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+
+def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
+def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
+    if db_path not in _SCHEMA_READY:
+        init_db(db_path)
+    return _connect(db_path)
+
+
 def init_db(db_path: str = DB_PATH):
     """Create tables if they don't exist."""
-    conn = get_connection(db_path)
+    conn = _connect(db_path)
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS ohlcv (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,6 +77,7 @@ def init_db(db_path: str = DB_PATH):
     """)
     conn.commit()
     conn.close()
+    _SCHEMA_READY.add(db_path)
 
 
 def store_ohlcv(df: pd.DataFrame, exchange: str, symbol: str, timeframe: str,
@@ -164,7 +177,3 @@ def get_backtest_results(strategy_name: Optional[str] = None,
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
-
-
-# Initialize DB on import
-init_db()
