@@ -133,9 +133,12 @@ def _rewrite_deprecated_close_ref(name: str, params: dict) -> tuple[str, dict]:
             pct = max(float(params.get("pct", 0.03)), 0.0)
         except (TypeError, ValueError):
             pct = 0.03
-    return "tiered_tp_pct", {
+    out = {
         "tp_tiers": [{"profit_pct": pct, "close_fraction": 1.0}],
     }
+    if params and "sl_after" in params:
+        out["sl_after"] = params["sl_after"]
+    return "tiered_tp_pct", out
 
 
 # Equity-curve points per year per timeframe — used to derive the Sharpe

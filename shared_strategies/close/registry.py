@@ -93,9 +93,12 @@ def _rewrite_deprecated_close(name: str, params: Optional[dict]) -> tuple[str, d
             pct = max(float(params.get("pct", 0.03)), 0.0)
         except (TypeError, ValueError):
             pct = 0.03
-    return "tiered_tp_pct", {
+    out = {
         "tp_tiers": [{"profit_pct": pct, "close_fraction": 1.0}],
     }
+    if params and "sl_after" in params:
+        out["sl_after"] = params["sl_after"]
+    return "tiered_tp_pct", out
 
 
 def evaluate(name: str, position: dict, market: dict, params: Optional[dict] = None) -> dict:

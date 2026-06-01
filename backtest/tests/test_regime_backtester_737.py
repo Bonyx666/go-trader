@@ -12,9 +12,9 @@ def _tier_spec_widely_separated():
     return [
         {
             "trend_regime": {
-                "trending_up": {"atr": 10.0, "close_fraction": 1.0},
-                "trending_down": {"atr": 10.0, "close_fraction": 1.0},
-                "ranging": {"atr": 0.25, "close_fraction": 1.0},
+                "trending_up": {"atr_multiple": 10.0, "close_fraction": 1.0},
+                "trending_down": {"atr_multiple": 10.0, "close_fraction": 1.0},
+                "ranging": {"atr_multiple": 0.25, "close_fraction": 1.0},
             }
         }
     ]
@@ -46,7 +46,7 @@ def test_tiered_tp_atr_regime_frozen_multiplier_ignores_mid_trade_regime_shift()
 
     close_ref = {
         "name": "tiered_tp_atr_regime",
-        "params": {"tiers": _tier_spec_widely_separated()},
+        "params": {"tp_tiers": _tier_spec_widely_separated()},
     }
     bt = Backtester(
         initial_capital=10_000.0,
@@ -85,7 +85,7 @@ def test_tiered_tp_atr_live_regime_re_resolves_multiplier_mid_trade():
 
     close_ref = {
         "name": "tiered_tp_atr_live_regime",
-        "params": {"tiers": _tier_spec_widely_separated()},
+        "params": {"tp_tiers": _tier_spec_widely_separated()},
     }
     bt = Backtester(
         initial_capital=10_000.0,
@@ -128,7 +128,7 @@ def test_stop_loss_atr_regime_seeds_initial_sl_trigger_from_open_stamp():
     close_ref = {
         "name": "tiered_tp_atr",
         "params": {
-            "tiers": [{"atr_multiple": 100.0, "close_fraction": 1.0}],
+            "tp_tiers": [{"atr_multiple": 100.0, "close_fraction": 1.0}],
             # ``sl_after`` arms the bar-level SL machinery (``_initial_sl_trigger``),
             # which is otherwise unused in the open/close engine (#737 test).
             "sl_after": "breakeven",

@@ -38,7 +38,7 @@ func normalizeDeprecatedCloseRef(ref *StrategyRef) {
 		}
 	}
 	ref.Name = "tiered_tp_pct"
-	ref.Params = map[string]interface{}{
+	out := map[string]interface{}{
 		"tp_tiers": []interface{}{
 			map[string]interface{}{
 				"profit_pct":     pct,
@@ -46,6 +46,12 @@ func normalizeDeprecatedCloseRef(ref *StrategyRef) {
 			},
 		},
 	}
+	if ref.Params != nil {
+		if sa, ok := ref.Params["sl_after"]; ok {
+			out["sl_after"] = sa
+		}
+	}
+	ref.Params = out
 }
 
 // migrateV15CloseKeys rewrites close-strategy params to the canonical #841 shape

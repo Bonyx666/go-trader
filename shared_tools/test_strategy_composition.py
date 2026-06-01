@@ -163,7 +163,7 @@ def test_validate_close_strategy_names_reports_both_registries():
         raise ValueError("open missing")
 
     def get_close_strategy(name):
-        if name == "tp_at_pct":
+        if name in ("tp_at_pct", "tiered_tp_pct"):
             return {}
         raise ValueError("close missing")
 
@@ -172,7 +172,7 @@ def test_validate_close_strategy_names_reports_both_registries():
         get_open_strategy,
         get_close_strategy,
         lambda: ["legacy_open_close"],
-        lambda: ["tp_at_pct"],
+        lambda: ["tiered_tp_pct"],
     )
 
     import pytest
@@ -182,7 +182,7 @@ def test_validate_close_strategy_names_reports_both_registries():
             get_open_strategy,
             get_close_strategy,
             lambda: ["legacy_open_close"],
-            lambda: ["tp_at_pct"],
+            lambda: ["tiered_tp_pct"],
         )
 
 

@@ -189,7 +189,7 @@ def test_parse_strategy_tp_sl_after_rules_default_and_per_tier_override():
         "name": "tiered_tp_atr_live",
         "params": {
             "sl_after": "breakeven",
-            "tiers": [
+            "tp_tiers": [
                 # out of order — should sort ascending by atr_multiple
                 {"atr_multiple": 3, "close_fraction": 1.0,
                  "sl_after": {"atr_mult": 0.25}},
@@ -222,7 +222,7 @@ def test_parse_strategy_tp_sl_after_rules_reports_malformed():
         "name": "tiered_tp_atr",
         "params": {
             "sl_after": "unknown-string",
-            "tiers": [
+            "tp_tiers": [
                 {"atr_multiple": 2, "close_fraction": 0.5,
                  "sl_after": {"kind": "weird"}},
                 {"atr_multiple": 3, "close_fraction": 1.0},
@@ -238,7 +238,7 @@ def test_validate_rejects_combination_with_trailing():
         "name": "tiered_tp_atr_live",
         "params": {
             "sl_after": "breakeven",
-            "tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
+            "tp_tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
                       {"atr_multiple": 3, "close_fraction": 1.0}],
         },
     }]
@@ -253,7 +253,7 @@ def test_validate_rejects_no_fixed_sl():
         "name": "tiered_tp_atr_live",
         "params": {
             "sl_after": "breakeven",
-            "tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
+            "tp_tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
                       {"atr_multiple": 3, "close_fraction": 1.0}],
         },
     }]
@@ -266,7 +266,7 @@ def test_validate_accepts_valid():
         "name": "tiered_tp_atr_live",
         "params": {
             "sl_after": "breakeven",
-            "tiers": [
+            "tp_tiers": [
                 {"atr_multiple": 2, "close_fraction": 0.5},
                 {"atr_multiple": 3, "close_fraction": 1.0,
                  "sl_after": {"atr_mult": 0.5}},
@@ -281,7 +281,7 @@ def test_validate_rejects_trail_from_here_on_manual():
         "name": "tiered_tp_atr_live",
         "params": {
             "sl_after": {"trail_from_here": {"atr_mult": 1.0}},
-            "tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
+            "tp_tiers": [{"atr_multiple": 2, "close_fraction": 0.5},
                       {"atr_multiple": 3, "close_fraction": 1.0}],
         },
     }]
@@ -304,7 +304,7 @@ def test_validate_rejects_per_tier_sl_after_on_non_tiered():
     refs = [{
         "name": "tiered_tp_pct",
         "params": {
-            "tiers": [
+            "tp_tiers": [
                 {"pct": 0.05, "close_fraction": 0.5, "sl_after": "breakeven"},
             ],
         },
@@ -316,7 +316,7 @@ def test_validate_rejects_per_tier_sl_after_on_non_tiered():
 def test_validate_no_op_when_sl_after_absent():
     refs = [{
         "name": "tiered_tp_atr_live",
-        "params": {"tiers": [
+        "params": {"tp_tiers": [
             {"atr_multiple": 2, "close_fraction": 0.5},
             {"atr_multiple": 3, "close_fraction": 1.0},
         ]},
@@ -327,7 +327,7 @@ def test_validate_no_op_when_sl_after_absent():
 def test_parse_tp_tier_close_fractions_sorts_and_coerces_final():
     refs = [{
         "name": "tiered_tp_atr",
-        "params": {"tiers": [
+        "params": {"tp_tiers": [
             {"atr_multiple": 3, "close_fraction": 0.9},  # final → coerced 1.0
             {"atr_multiple": 1, "close_fraction": 0.25},
             {"atr_multiple": 2, "close_fraction": 0.5},
@@ -382,7 +382,7 @@ def test_backtester_breakeven_after_tp1_long():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -414,7 +414,7 @@ def test_backtester_breakeven_after_tp1_short():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -443,7 +443,7 @@ def test_backtester_atr_offset_after_tp1_long():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": {"atr_mult": 0.5},
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -482,7 +482,7 @@ def test_backtester_trail_from_here_long_walks_up():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": {"trail_from_here": {"atr_mult": 1.0}},
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -512,7 +512,7 @@ def test_backtester_tp_atr_fraction_uses_firing_tier_multiple():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": {"trail_from_here": {"tp_atr_fraction": 0.5}},
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 2.0, "close_fraction": 0.5},
                     {"atr_multiple": 4.0, "close_fraction": 1.0},
                 ],
@@ -567,7 +567,7 @@ def test_backtester_trail_from_here_short_walks_down():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": {"trail_from_here": {"atr_mult": 1.0}},
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -593,7 +593,7 @@ def test_backtester_validation_rejects_no_fixed_sl():
                 "name": "tiered_tp_atr",
                 "params": {
                     "sl_after": "breakeven",
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 2, "close_fraction": 0.5},
                         {"atr_multiple": 3, "close_fraction": 1.0},
                     ],
@@ -612,7 +612,7 @@ def test_backtester_validation_rejects_combo_with_trailing():
                 "name": "tiered_tp_atr",
                 "params": {
                     "sl_after": "breakeven",
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 2, "close_fraction": 0.5},
                         {"atr_multiple": 3, "close_fraction": 1.0},
                     ],
@@ -631,7 +631,7 @@ def test_backtester_validation_rejects_trail_from_here_on_manual():
                 "name": "tiered_tp_atr_live",
                 "params": {
                     "sl_after": {"trail_from_here": {"atr_mult": 1.0}},
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 2, "close_fraction": 0.5},
                         {"atr_multiple": 3, "close_fraction": 1.0},
                     ],
@@ -666,13 +666,12 @@ def test_backtester_validation_rejects_regime_sl_after_strategy_default():
                 "name": "tiered_tp_atr",
                 "params": {
                     "sl_after": {
-                        "trend_regime": {
-                            "trending_up": {"atr": 0.25},
-                            "trending_down": {"atr": 0.25},
-                            "ranging": {"atr": 0.0},
+                        "trend_regime": {"trending_up": {"atr_multiple": 0.25},
+                            "trending_down": {"atr_multiple": 0.25},
+                            "ranging": {"atr_multiple": 0.0},
                         },
                     },
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 1.0, "close_fraction": 0.5},
                         {"atr_multiple": 2.0, "close_fraction": 1.0},
                     ],
@@ -690,16 +689,15 @@ def test_backtester_validation_rejects_regime_sl_after_per_tier():
             close_strategies=[{
                 "name": "tiered_tp_atr",
                 "params": {
-                    "tiers": [
+                    "tp_tiers": [
                         {
                             "atr_multiple": 1.0,
                             "close_fraction": 0.5,
                             "sl_after": {
                                 "trail_from_here": {
-                                    "trend_regime": {
-                                        "trending_up": {"atr": 1.0},
-                                        "trending_down": {"atr": 1.0},
-                                        "ranging": {"atr": 0.5},
+                                    "trend_regime": {"trending_up": {"atr_multiple": 1.0},
+                                        "trending_down": {"atr_multiple": 1.0},
+                                        "ranging": {"atr_multiple": 0.5},
                                     },
                                 },
                             },
@@ -731,7 +729,7 @@ def test_backtester_validation_rejects_regime_tp_atr_fraction():
                             },
                         },
                     },
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 2.0, "close_fraction": 0.5},
                         {"atr_multiple": 4.0, "close_fraction": 1.0},
                     ],
@@ -749,12 +747,11 @@ def test_backtester_validation_rejects_regime_tp_atr_fraction_on_regime_tier():
             close_strategies=[{
                 "name": "tiered_tp_atr_regime",
                 "params": {
-                    "tiers": [
+                    "tp_tiers": [
                         {
-                            "trend_regime": {
-                                "trending_up": {"atr": 2.0},
-                                "trending_down": {"atr": 2.0},
-                                "ranging": {"atr": 1.5},
+                            "trend_regime": {"trending_up": {"atr_multiple": 2.0},
+                                "trending_down": {"atr_multiple": 2.0},
+                                "ranging": {"atr_multiple": 1.5},
                             },
                             "close_fraction": 0.5,
                             "sl_after": {
@@ -770,10 +767,9 @@ def test_backtester_validation_rejects_regime_tp_atr_fraction_on_regime_tier():
                             },
                         },
                         {
-                            "trend_regime": {
-                                "trending_up": {"atr": 4.0},
-                                "trending_down": {"atr": 4.0},
-                                "ranging": {"atr": 3.0},
+                            "trend_regime": {"trending_up": {"atr_multiple": 4.0},
+                                "trending_down": {"atr_multiple": 4.0},
+                                "ranging": {"atr_multiple": 3.0},
                             },
                             "close_fraction": 1.0,
                         },
@@ -797,7 +793,7 @@ def test_backtester_no_sl_after_unchanged_behavior():
         close_strategies=[{
             "name": "tiered_tp_atr",
             "params": {
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -837,7 +833,7 @@ def test_backtester_multi_tier_cleared_same_bar_highest_wins():
         close_strategies=[{
             "name": "tiered_tp_atr",
             "params": {
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.3,
                      "sl_after": "breakeven"},
                     {"atr_multiple": 2.0, "close_fraction": 0.6,
@@ -873,7 +869,7 @@ def test_backtester_sl_after_idempotent_across_bars():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": {"atr_mult": 0.5},
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -931,7 +927,7 @@ def test_backtester_validation_rejects_margin_pct_only():
                 "name": "tiered_tp_atr",
                 "params": {
                     "sl_after": "breakeven",
-                    "tiers": [
+                    "tp_tiers": [
                         {"atr_multiple": 1.0, "close_fraction": 0.5},
                         {"atr_multiple": 2.0, "close_fraction": 1.0},
                     ],
@@ -954,7 +950,7 @@ def test_backtester_sl_after_defers_when_sl_unarmed():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -1016,7 +1012,7 @@ def test_backtester_sl_after_no_same_bar_fire_after_bump_long():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -1065,7 +1061,7 @@ def test_backtester_sl_after_no_same_bar_fire_after_bump_short():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -1112,7 +1108,7 @@ def test_backtester_sl_after_flag_clears_for_next_bar_long():
             "name": "tiered_tp_atr",
             "params": {
                 "sl_after": "breakeven",
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.5},
                     {"atr_multiple": 2.0, "close_fraction": 1.0},
                 ],
@@ -1157,7 +1153,7 @@ def test_backtester_sl_after_does_not_seed_when_no_tier_thresholds():
                 "sl_after": "breakeven",
                 # All zero close_fractions are dropped by the parser →
                 # _tp_tier_thresholds == [].
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 1.0, "close_fraction": 0.0},
                     {"atr_multiple": 2.0, "close_fraction": 0.0},
                 ],
