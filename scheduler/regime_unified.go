@@ -1,0 +1,186 @@
+package main
+
+// #841 chunk 2b — the unified per-regime close block.
+//
+// Operator-facing shape on a tiered_tp_atr_regime / tiered_tp_atr_live_regime
+// close ref:
+//
+//	"params": { "trend_regime": {
+//	    "<label>": {
+//	        "stop_loss_atr": 1.5,                       // optional, per-regime SL
+//	        "tp_tiers": [                               // this regime's ladder
+//	            { "atr_multiple": 2.0, "close_fraction": 0.5,
+//	              "sl_after": { "kind": "trail_from_here", "tp_atr_fraction": 0.5 } },
+//	            { "atr_multiple": 4.0, "close_fraction": 1.0 }
+//	        ]
+//	    },
+//	    ...one entry per regime label, exhaustive...
+//	} }
+//
+// Every value under a label is a plain scalar — the regime is resolved once at
+// the top, so sl_after carries no internal trend_regime sub-block. Resolution
+// selects the active regime's block (unifiedRegimeScalarParams) and feeds it to
+// the existing SCALAR tiered_tp_atr machinery, so each regime resolves
+// independently (tier counts may differ between regimes).
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// closeParamsAreUnifiedRegime reports whether a close ref's params use the
+// unified per-regime block (top-level "trend_regime") rather than the legacy
+// tier-keyed shape (top-level "tp_tiers" with trend_regime inside each tier).
+func closeParamsAreUnifiedRegime(params map[string]interface{}) bool {
+	if params == nil {
+		return false
+	}
+	_, hasTrend := params[regimeClassifierKey]
+	return hasTrend
+}
+
+// unifiedRegimeScalarParams selects the scalar tiered-close plan for the given
+// regime label out of a unified block. The returned params are a plain scalar
+// tiered_tp_atr config ({"tp_tiers": [...]}, plus "atr_source" when the ref is
+// a *_live variant) that the existing scalar resolver/evaluator understands.
+// stopLossATR is the per-label stop_loss_atr multiple (0 when unset). ok=false
+// when the label is absent or malformed — callers validate at load, so a miss
+// at runtime means the regime classifier produced an unexpected label and the
+// caller should fall back to its scalar sibling.
+func unifiedRegimeScalarParams(params map[string]interface{}, regime string) (scalar map[string]interface{}, stopLossATR float64, ok bool) {
+	trendRaw, isMap := params[regimeClassifierKey].(map[string]interface{})
+	if !isMap {
+		return nil, 0, false
+	}
+	labelRaw, isMap := trendRaw[strings.TrimSpace(regime)].(map[string]interface{})
+	if !isMap {
+		return nil, 0, false
+	}
+	tiers, hasTiers := labelRaw["tp_tiers"]
+	if !hasTiers {
+		return nil, 0, false
+	}
+	scalar = map[string]interface{}{"tp_tiers": tiers}
+	// Carry atr_source from the ref's top level so the *_live variant keeps
+	// recomputing ATR per tick after the regime block is collapsed to scalar.
+	if v, ok := params["atr_source"]; ok {
+		scalar["atr_source"] = v
+	}
+	if v, ok := labelRaw["stop_loss_atr"]; ok {
+		if f, err := floatFromAnyChecked(v); err == nil {
+			stopLossATR = f
+		}
+	}
+	return scalar, stopLossATR, true
+}
+
+// validateUnifiedRegimeClose validates a unified per-regime close block against
+// the strategy's regime label vocabulary. Errors are config-load failures so a
+// typo can't silently disable the exit plan. The label set must be exhaustive
+// (no silent fallback) and contain no unknown labels.
+func validateUnifiedRegimeClose(params map[string]interface{}, labels []string, ctxLabel string) []string {
+	trendRaw, ok := params[regimeClassifierKey].(map[string]interface{})
+	if !ok {
+		return []string{fmt.Sprintf("%s.%s: must be an object", ctxLabel, regimeClassifierKey)}
+	}
+	if len(labels) == 0 {
+		labels = canonicalTrendRegimeLabels
+	}
+	valid := make(map[string]bool, len(labels))
+	for _, l := range labels {
+		valid[l] = true
+	}
+
+	var errs []string
+	unknown := make([]string, 0)
+	for l := range trendRaw {
+		if !valid[l] {
+			unknown = append(unknown, l)
+		}
+	}
+	sort.Strings(unknown)
+	for _, l := range unknown {
+		errs = append(errs, fmt.Sprintf("%s.%s: unknown regime label %q (expected one of: %s)",
+			ctxLabel, regimeClassifierKey, l, strings.Join(labels, ", ")))
+	}
+
+	for _, l := range labels {
+		lr, ok := trendRaw[l]
+		if !ok {
+			errs = append(errs, fmt.Sprintf("%s.%s: missing required regime label %q (must be exhaustive — no silent fallback)",
+				ctxLabel, regimeClassifierKey, l))
+			continue
+		}
+		lm, ok := lr.(map[string]interface{})
+		if !ok {
+			errs = append(errs, fmt.Sprintf("%s.%s.%s: must be an object, got %T", ctxLabel, regimeClassifierKey, l, lr))
+			continue
+		}
+		for k := range lm {
+			if k != "stop_loss_atr" && k != "tp_tiers" {
+				errs = append(errs, fmt.Sprintf("%s.%s.%s: unknown key %q (allowed: stop_loss_atr, tp_tiers)",
+					ctxLabel, regimeClassifierKey, l, k))
+			}
+		}
+		if v, ok := lm["stop_loss_atr"]; ok {
+			if f, err := floatFromAnyChecked(v); err != nil || f <= 0 {
+				errs = append(errs, fmt.Sprintf("%s.%s.%s.stop_loss_atr: must be > 0", ctxLabel, regimeClassifierKey, l))
+			}
+		}
+		tiersRaw, ok := lm["tp_tiers"]
+		if !ok {
+			errs = append(errs, fmt.Sprintf("%s.%s.%s: missing required %q", ctxLabel, regimeClassifierKey, l, "tp_tiers"))
+			continue
+		}
+		errs = append(errs, validateUnifiedTierList(tiersRaw, fmt.Sprintf("%s.%s.%s", ctxLabel, regimeClassifierKey, l))...)
+	}
+	return errs
+}
+
+// validateUnifiedTierList validates one regime label's scalar tp_tiers ladder:
+// non-empty, ascending-capable atr_multiple > 0, close_fraction in (0, 1], and
+// a well-formed optional scalar sl_after.
+func validateUnifiedTierList(raw interface{}, ctxLabel string) []string {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return []string{fmt.Sprintf("%s.tp_tiers: must be a list, got %T", ctxLabel, raw)}
+	}
+	if len(items) == 0 {
+		return []string{fmt.Sprintf("%s.tp_tiers: must have at least one tier", ctxLabel)}
+	}
+	var errs []string
+	for i, item := range items {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d]: must be an object, got %T", ctxLabel, i, item))
+			continue
+		}
+		mult, err := floatFromAnyChecked(firstPresent(m, "atr_multiple"))
+		if err != nil || mult <= 0 {
+			errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d].atr_multiple: must be > 0", ctxLabel, i))
+		}
+		frac, err := floatFromAnyChecked(firstPresent(m, "close_fraction"))
+		if err != nil || frac <= 0 || frac > 1 {
+			errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d].close_fraction: must be in (0, 1]", ctxLabel, i))
+		}
+		if saRaw, ok := m["sl_after"]; ok {
+			rule, perr := parseSLAfterRuleRuntime(saRaw)
+			if perr != nil {
+				errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d].sl_after: %v", ctxLabel, i, perr))
+			} else if verr := validateSLAfterRule(rule); verr != nil {
+				errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d].sl_after: %v", ctxLabel, i, verr))
+			} else if rule.HasRegime() {
+				errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d].sl_after: must be scalar in a unified per-regime block (the regime is resolved at the top level; drop the trend_regime sub-block)", ctxLabel, i))
+			}
+		}
+		for k := range m {
+			switch k {
+			case "atr_multiple", "close_fraction", "sl_after":
+			default:
+				errs = append(errs, fmt.Sprintf("%s.tp_tiers[%d]: unknown key %q (allowed: atr_multiple, close_fraction, sl_after)", ctxLabel, i, k))
+			}
+		}
+	}
+	return errs
+}
