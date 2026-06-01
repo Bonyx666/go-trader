@@ -88,7 +88,19 @@ The wizard covers assets, strategy groups, paper/live mode, per-strategy capital
 Manual config rules:
 
 - Strategy entries need `id`, `type`, `script`, `args`, `capital`, `max_drawdown_pct`, `interval_seconds`.
-- `open_strategy` and each entry in `close_strategies` are objects of shape `{"name": "<id>", "params": {...}}` (#640/#642). Per-evaluator params (e.g. `tiered_tp_atr`'s `tiers`) live on the matching close ref, not on the strategy. Pre-v13 configs with a flat `params` map and string-typed `open_strategy`/`close_strategies` are migrated automatically on next start (synchronous, no DM); flat keys split per close-strategy ownership and everything else stays on the open ref.
+- `open_strategy` and each entry in `close_strategies` are objects of shape `{"name": "<id>", "params": {...}}` (#640/#642). Per-evaluator params (e.g. `tiered_tp_atr`'s `tp_tiers`) live on the matching close ref, not on the strategy. Pre-v13 configs with a flat `params` map and string-typed `open_strategy`/`close_strategies` are migrated automatically on next start (synchronous, no DM); flat keys split per close-strategy ownership and everything else stays on the open ref.
+- **#841 canonical close keys:** the tier list is `tp_tiers` and each tier is `{"atr_multiple"|"profit_pct": N, "close_fraction": 0..1, "sl_after"?: {...}}`. Legacy `tiers` / `atr` / `multiple` / `fraction` keys are still read for one deprecation window (a `[DEPRECATED]` warning is logged), but write the canonical names.
+- **#841 unified per-regime close block** (`tiered_tp_atr_regime` / `tiered_tp_atr_live_regime`): instead of a tier-keyed list, give the close ref a top-level `trend_regime` where each label owns its own plan — its stop loss and tier ladder co-located, varying freely per regime:
+  ```json
+  {"name": "tiered_tp_atr_live_regime", "params": {"trend_regime": {
+    "trending_up": {"stop_loss_atr": 1.5, "tp_tiers": [
+      {"atr_multiple": 2.0, "close_fraction": 0.5, "sl_after": {"kind": "trail_from_here", "tp_atr_fraction": 0.5}},
+      {"atr_multiple": 4.0, "close_fraction": 1.0}]},
+    "ranging": {"stop_loss_atr": 0.8, "tp_tiers": [
+      {"atr_multiple": 1.0, "close_fraction": 1.0}]}
+  }}}
+  ```
+  All regime labels must be present (exhaustive, no fallback); tier counts may differ per regime; every value under a label is a plain scalar (the regime is resolved once at the top, so `sl_after` carries no `trend_regime` sub-block). The block **owns the stop loss** via per-regime `stop_loss_atr` — declaring any strategy-level stop field (`stop_loss_atr_mult`/`stop_loss_atr_regime`/`stop_loss_pct`/`stop_loss_margin_pct`/`trailing_stop_*`) alongside it is rejected at load. The whole block is hot-reload-gated as a unit (changing it while a position is open is rejected — flatten first).
 - `discord.channels` / `telegram.channels` keys: `spot`, `options`, `hyperliquid`, `topstep`, `robinhood`, `okx`, `luno`, plus optional paper keys (e.g., `okx-paper`).
 - `summary_frequency`: same key scheme. Values: `hourly`, `daily`, `every`, `per_check`, `always`, or Go durations (`30m`, `2h`). Wall-clock cadence persisted in SQLite (`app_state.last_summary_post`); survives restart/SIGHUP.
 - Trades always force an immediate summary post regardless of cadence.
