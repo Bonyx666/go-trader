@@ -564,11 +564,11 @@ func hyperliquidPlacesOnChainTPs(sc StrategyConfig) bool {
 // end up with a race; instead they get a clean signal that on-chain
 // protection trumps the in-process evaluator.
 var closeStrategiesSuppressedByOnChainProtection = map[string]struct{}{
-	"tiered_tp_atr":                        {},
-	"tiered_tp_atr_live":                   {},
-	"tiered_tp_atr_regime":                 {},
-	"tiered_tp_atr_live_regime":            {},
-	"tiered_tp_atr_live_regime_dynamic":    {},
+	"tiered_tp_atr":                     {},
+	"tiered_tp_atr_live":                {},
+	"tiered_tp_atr_regime":              {},
+	"tiered_tp_atr_live_regime":         {},
+	"tiered_tp_atr_live_regime_dynamic": {},
 }
 
 // isTieredTPATRCloseName returns true when name is any of the four
