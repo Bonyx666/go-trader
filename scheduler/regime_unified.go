@@ -114,6 +114,31 @@ func unifiedCloseStopLossATR(sc StrategyConfig, regime string) (float64, bool) {
 	return 0, false
 }
 
+// validateUnifiedCloseSoleOwner enforces that a strategy using a unified
+// per-regime close block does not also declare strategy-level stop fields. The
+// unified close owns the whole exit plan including the per-regime SL (via
+// stop_loss_atr), so a strategy-level stop would be an ambiguous second owner.
+// #841 2b / #843 sole-owner.
+func validateUnifiedCloseSoleOwner(sc StrategyConfig, ctxLabel string) []string {
+	if !strategyUsesUnifiedRegimeClose(sc) {
+		return nil
+	}
+	var errs []string
+	conflict := func(set bool, field string) {
+		if set {
+			errs = append(errs, fmt.Sprintf("%s: %s is not allowed alongside a unified per-regime close — the close owns the SL via per-regime stop_loss_atr", ctxLabel, field))
+		}
+	}
+	conflict(sc.StopLossATRMult != nil, "stop_loss_atr_mult")
+	conflict(sc.StopLossATRRegime != nil && !sc.StopLossATRRegime.IsZero(), "stop_loss_atr_regime")
+	conflict(sc.StopLossPct != nil, "stop_loss_pct")
+	conflict(sc.StopLossMarginPct != nil, "stop_loss_margin_pct")
+	conflict(sc.TrailingStopATRMult != nil, "trailing_stop_atr_mult")
+	conflict(sc.TrailingStopPct != nil, "trailing_stop_pct")
+	conflict(sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero(), "trailing_stop_atr_regime")
+	return errs
+}
+
 // validateUnifiedRegimeClose validates a unified per-regime close block against
 // the strategy's regime label vocabulary. Errors are config-load failures so a
 // typo can't silently disable the exit plan. The label set must be exhaustive

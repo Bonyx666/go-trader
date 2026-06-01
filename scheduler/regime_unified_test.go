@@ -233,3 +233,31 @@ func TestValidateRegimeATRConfig_UnifiedBlockAccepted(t *testing.T) {
 		t.Fatalf("unified config hit the legacy tier-keyed path: %v", errs)
 	}
 }
+
+// TestValidateUnifiedCloseSoleOwner verifies #841 2b sole-owner enforcement: a
+// unified per-regime close may not coexist with a strategy-level stop field.
+func TestValidateUnifiedCloseSoleOwner(t *testing.T) {
+	mk := func() StrategyConfig {
+		return StrategyConfig{
+			ID: "hl-x", Type: "perps", Platform: "hyperliquid",
+			CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live_regime", Params: unifiedBlock()}},
+		}
+	}
+	// Clean: no strategy-level stop → no errors.
+	if errs := validateUnifiedCloseSoleOwner(mk(), "s"); len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	// Conflict: strategy-level stop_loss_atr_mult set → rejected.
+	sc := mk()
+	m := 1.5
+	sc.StopLossATRMult = &m
+	errs := validateUnifiedCloseSoleOwner(sc, "s")
+	if len(errs) == 0 || !strings.Contains(errs[0], "stop_loss_atr_mult is not allowed alongside a unified per-regime close") {
+		t.Fatalf("expected sole-owner rejection, got: %v", errs)
+	}
+	// Non-unified strategy → helper is a no-op.
+	plain := StrategyConfig{ID: "p", Type: "perps", Platform: "hyperliquid", StopLossATRMult: &m}
+	if errs := validateUnifiedCloseSoleOwner(plain, "p"); len(errs) > 0 {
+		t.Fatalf("non-unified strategy should not trip sole-owner: %v", errs)
+	}
+}

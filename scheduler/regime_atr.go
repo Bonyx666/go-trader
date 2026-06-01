@@ -856,6 +856,7 @@ func validateRegimeATRConfig(cfg *Config) []string {
 		if usesRegime && !regimeEnabled {
 			errs = append(errs, fmt.Sprintf("%s: regime-aware stop/TP fields require top-level regime.enabled=true", prefix))
 		}
+		errs = append(errs, validateUnifiedCloseSoleOwner(*sc, prefix)...)
 	}
 	return errs
 }
