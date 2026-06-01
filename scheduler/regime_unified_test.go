@@ -196,3 +196,40 @@ func TestUnifiedRegimeSLFolding(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateRegimeATRConfig_UnifiedBlockAccepted verifies the #841 2b gate:
+// a unified per-regime close config validates (no longer rejected as "missing
+// tiers"), and a malformed one surfaces the unified validation error.
+func TestValidateRegimeATRConfig_UnifiedBlockAccepted(t *testing.T) {
+	mkCfg := func(params map[string]interface{}) *Config {
+		return &Config{
+			Regime: &RegimeConfig{Enabled: true, Period: 14, ADXThreshold: 20},
+			Strategies: []StrategyConfig{{
+				ID:       "hl-unified",
+				Type:     "perps",
+				Platform: "hyperliquid",
+				CloseStrategies: []StrategyRef{{
+					Name:   "tiered_tp_atr_live_regime",
+					Params: params,
+				}},
+			}},
+		}
+	}
+
+	valid := mkCfg(unifiedBlock())
+	if errs := validateRegimeATRConfig(valid); len(errs) > 0 {
+		t.Fatalf("valid unified config rejected: %v", errs)
+	}
+
+	// Drop a required label → unified validator should fire, not "missing tiers".
+	bad := unifiedBlock()
+	delete(bad[regimeClassifierKey].(map[string]interface{}), "ranging")
+	errs := validateRegimeATRConfig(mkCfg(bad))
+	joined := strings.Join(errs, " | ")
+	if !strings.Contains(joined, "missing required regime label") {
+		t.Fatalf("expected unified exhaustiveness error, got: %v", errs)
+	}
+	if strings.Contains(joined, "missing tiers") {
+		t.Fatalf("unified config hit the legacy tier-keyed path: %v", errs)
+	}
+}
