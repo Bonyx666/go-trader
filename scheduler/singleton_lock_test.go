@@ -20,7 +20,7 @@ func TestAcquireStateDBLock_Basic(t *testing.T) {
 	}
 
 	// The lock file sits next to the DB and records our PID.
-	wantPath := dbPath + ".lock"
+	wantPath := stateDBLockPath(dbPath)
 	if lock.path != wantPath {
 		t.Errorf("lock.path = %q, want %q", lock.path, wantPath)
 	}
@@ -97,9 +97,44 @@ func TestAcquireStateDBLock_DistinctPaths(t *testing.T) {
 	defer b.Release()
 }
 
+func TestAcquireStateDBLock_SymlinkedPathContends(t *testing.T) {
+	dir := t.TempDir()
+	realDB := filepath.Join(dir, "state.db")
+	// The DB file must exist for EvalSymlinks to resolve the path (in production
+	// the state DB is opened before the lock is taken).
+	if err := os.WriteFile(realDB, nil, 0o644); err != nil {
+		t.Fatalf("create db file: %v", err)
+	}
+	// A file-level symlink under a different name. The ".lock" suffix is appended
+	// to the symlink's *own* path, so without canonicalization the alias resolves
+	// to a different lock file (state-alias.db.lock vs state.db.lock) and a
+	// duplicate could start trading. EvalSymlinks collapses both to one lock.
+	linkedDB := filepath.Join(dir, "state-alias.db")
+	if err := os.Symlink(realDB, linkedDB); err != nil {
+		t.Skipf("symlinks unavailable on this platform: %v", err)
+	}
+
+	first, err := acquireStateDBLock(realDB)
+	if err != nil {
+		t.Fatalf("acquire via real path failed: %v", err)
+	}
+	defer first.Release()
+
+	// The same DB reached through the symlink must contend, not get its own lock.
+	second, err := acquireStateDBLock(linkedDB)
+	if err == nil {
+		second.Release()
+		t.Fatal("acquire via symlinked path succeeded — canonicalization is not collapsing symlinks")
+	}
+	var locked *stateDBLockedError
+	if !errors.As(err, &locked) {
+		t.Fatalf("error = %v (%T), want *stateDBLockedError", err, err)
+	}
+}
+
 func TestAcquireStateDBLock_StaleFdReleasesOnClose(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "state.db")
-	lockPath := dbPath + ".lock"
+	lockPath := stateDBLockPath(dbPath)
 
 	// Simulate a crashed holder: open the lock file, flock it, then close the
 	// fd WITHOUT calling Release — closing the fd is exactly what the kernel

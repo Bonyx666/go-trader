@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -55,9 +56,29 @@ func (e *stateDBLockedError) Error() string {
 // stateDBLockPath returns the lock-file path for a given state-DB path. The
 // lock sits next to the DB so per-DB-file isolation is automatic: genuinely
 // separate instances (sub-accounts / distinct DBFile) resolve to distinct lock
-// files and never contend.
+// files and never contend. The DB path is first canonicalized so two launches
+// that name the same DB through different strings (relative vs absolute, or via
+// a symlink) collapse to one lock file and actually contend.
 func stateDBLockPath(dbPath string) string {
-	return dbPath + ".lock"
+	return canonicalDBPath(dbPath) + ".lock"
+}
+
+// canonicalDBPath resolves dbPath to an absolute, symlink-free form so distinct
+// strings naming the same file map to the same lock path. Resolution is
+// best-effort and degrades to the most-resolved form available: if the DB file
+// (or a path component) doesn't exist yet, EvalSymlinks fails and we keep the
+// Abs form; if even Abs fails we keep the raw string. The guard must never
+// refuse to start merely because the path couldn't be canonicalized — the
+// fallback just reverts to the pre-hardening raw-string behavior.
+func canonicalDBPath(dbPath string) string {
+	resolved := dbPath
+	if abs, err := filepath.Abs(resolved); err == nil {
+		resolved = abs
+	}
+	if eval, err := filepath.EvalSymlinks(resolved); err == nil {
+		resolved = eval
+	}
+	return resolved
 }
 
 // acquireStateDBLock takes an exclusive, non-blocking flock on <dbPath>.lock.
