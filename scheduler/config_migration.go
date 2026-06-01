@@ -10,7 +10,7 @@ import (
 
 // CurrentConfigVersion is the version embedded in newly generated configs.
 // When the binary starts and cfg.ConfigVersion < CurrentConfigVersion, migration runs.
-const CurrentConfigVersion = 14
+const CurrentConfigVersion = 15
 
 // ConfigField describes a config field introduced in a specific version.
 type ConfigField struct {
@@ -97,6 +97,12 @@ const v14DeprecationNotice = "**Note:** perps configs now use `direction: \"long
 	"Migration converts `allow_shorts: false` → `direction: \"long\"` and `allow_shorts: true` → `direction: \"both\"`. " +
 	"The new `\"short\"` value lets you run a bidirectional strategy as a dedicated short-only instrument " +
 	"(useful with `allowed_regimes: [\"trending_down\"]`). See issue #656."
+
+const v15DeprecationNotice = "**Note:** close-strategy params now use canonical keys (#841). " +
+	"Migration rewrites on disk: `tiers`→`tp_tiers`, `atr`/`multiple`→`atr_multiple`, " +
+	"`fraction`→`close_fraction`, tier `pct`→`profit_pct`, `tp_at_pct`→single-tier `tiered_tp_pct`, " +
+	"and legacy tier-keyed `tiered_tp_atr_regime` blocks→unified top-level `trend_regime` " +
+	"(with per-label `stop_loss_atr` + `tp_tiers`). See issue #841."
 
 const v7DeprecationNotice = "**Note:** `dm_paper_trades` and `dm_live_trades` have been replaced by a `dm_channels` map. " +
 	"Paper trades use `dm_channels[\"<platform>-paper\"]`; live trades use `dm_channels[\"<platform>\"]`. " +
@@ -197,6 +203,12 @@ func MigrateConfig(configPath string, fieldValues map[string]string, cfg *Config
 	// `direction: "both"` based on the old boolean; the field is removed.
 	if oldVer < 14 {
 		migrateV14Direction(raw)
+	}
+
+	// v15: canonicalize close-strategy keys (#841): tp_tiers, atr_multiple,
+	// unified per-regime block, tp_at_pct → tiered_tp_pct.
+	if oldVer < 15 {
+		migrateV15CloseKeys(raw)
 	}
 
 	raw["config_version"] = CurrentConfigVersion
@@ -463,6 +475,9 @@ func runConfigMigrationDM(cfg *Config, notifier *MultiNotifier, configPath strin
 		if cfg.ConfigVersion < 14 {
 			fmt.Printf("[migration] %s\n", v14DeprecationNotice)
 		}
+		if cfg.ConfigVersion < 15 {
+			fmt.Printf("[migration] %s\n", v15DeprecationNotice)
+		}
 		return
 	}
 
@@ -516,6 +531,10 @@ func runConfigMigrationDM(cfg *Config, notifier *MultiNotifier, configPath strin
 	if cfg.ConfigVersion < 14 {
 		notifier.SendOwnerDM(v14DeprecationNotice)
 	}
+	// v15: notify about close-strategy canonical keys (#841).
+	if cfg.ConfigVersion < 15 {
+		notifier.SendOwnerDM(v15DeprecationNotice)
+	}
 }
 
 // needsV13SchemaMigration reports whether the on-disk config still uses the
@@ -548,7 +567,7 @@ var closeStrategyOwnedKeys = map[string]map[string]struct{}{
 	"tiered_tp_atr_regime":      {"tp_tiers": {}, "tiers": {}, "use_defaults": {}, "sl_after": {}},
 	"tiered_tp_atr_live_regime": {"tp_tiers": {}, "tiers": {}, "use_defaults": {}, "atr_source": {}, "sl_after": {}},
 	"tiered_tp_pct":             {"tp_tiers": {}, "tiers": {}},
-	"tp_at_pct":                 {"pct": {}},
+	"tp_at_pct":                 {"pct": {}}, // v15 migrates to tiered_tp_pct; kept for v13 legacy param routing only
 }
 
 // migrateV14Direction translates the legacy boolean `allow_shorts` field on

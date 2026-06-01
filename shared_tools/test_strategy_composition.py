@@ -253,4 +253,4 @@ def test_tp_at_pct_position_aware_close_handles_missing_and_hit():
         },
     )
     assert hit["close_fraction"] == 1.0
-    assert hit["reason"] == "tp_at_pct:hit"
+    assert hit["reason"] == "tiered_tp_pct:0.05"

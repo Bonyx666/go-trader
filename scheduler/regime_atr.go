@@ -433,7 +433,7 @@ func parseRegimeATRBlock(raw map[string]interface{}, ctxLabel string, surface re
 		}
 
 		allowFrac := surface == regimeSurfaceTPTierWithFrac
-		allowedEntryKeys := map[string]bool{"atr_multiple": true, "atr": true}
+		allowedEntryKeys := map[string]bool{"atr_multiple": true}
 		if allowFrac {
 			allowedEntryKeys["close_fraction"] = true
 		}
@@ -495,21 +495,17 @@ func parseRegimeATRBlock(raw map[string]interface{}, ctxLabel string, surface re
 	return RegimeATRBlock{TrendRegime: result}, errs
 }
 
-// regimeEntryATRRaw reads the canonical "atr_multiple" trigger from a
-// per-regime entry, accepting the deprecated "atr" alias with a one-shot
-// warning. Setting both is rejected as ambiguous. Returns (raw, present, err).
-// #841.
+// regimeEntryATRRaw reads the canonical "atr_multiple" trigger from a per-regime
+// entry. Setting both atr_multiple and the legacy "atr" alias is rejected.
+// Returns (raw, present, err). #841.
 func regimeEntryATRRaw(entryMap map[string]interface{}) (interface{}, bool, error) {
 	canon, hasCanon := entryMap["atr_multiple"]
-	legacy, hasLegacy := entryMap["atr"]
+	_, hasLegacy := entryMap["atr"]
 	switch {
 	case hasCanon && hasLegacy:
 		return nil, false, fmt.Errorf("set only one of %q or %q (%q is the deprecated alias)", "atr_multiple", "atr", "atr")
 	case hasCanon:
 		return canon, true, nil
-	case hasLegacy:
-		warnDeprecatedConfigKey("atr", "atr_multiple")
-		return legacy, true, nil
 	default:
 		return nil, false, nil
 	}

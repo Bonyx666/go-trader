@@ -34,8 +34,8 @@ def _warn_deprecated_key(old: str, canonical: str) -> None:
 
 
 def _regime_entry_atr_raw(entry_raw: dict):
-    """Read the canonical 'atr_multiple' trigger from a per-regime entry,
-    accepting the deprecated 'atr' alias. Setting both is rejected (#841).
+    """Read the canonical 'atr_multiple' trigger from a per-regime entry.
+    Setting both atr_multiple and legacy 'atr' is rejected (#841).
     Returns (raw, present, error_msg)."""
     has_canon = "atr_multiple" in entry_raw
     has_legacy = "atr" in entry_raw
@@ -46,9 +46,6 @@ def _regime_entry_atr_raw(entry_raw: dict):
         )
     if has_canon:
         return entry_raw.get("atr_multiple"), True, None
-    if has_legacy:
-        _warn_deprecated_key("atr", "atr_multiple")
-        return entry_raw.get("atr"), True, None
     return None, False, None
 
 
@@ -259,7 +256,7 @@ def parse_regime_atr_block(
 
     result: Dict[str, RegimeATREntry] = {}
     allow_frac = surface == SURFACE_TP_TIER_WITH_FRAC
-    allowed_entry_keys = {"atr_multiple", "atr"} | (
+    allowed_entry_keys = {"atr_multiple"} | (
         {"close_fraction"} if allow_frac else set()
     )
 

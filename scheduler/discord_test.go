@@ -2114,7 +2114,7 @@ func TestFormatTradeDMPlain_OpenWithCustomTiers(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
@@ -2285,7 +2285,7 @@ func TestFormatTradeDM_OpenWithCustomTiers(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
@@ -2321,7 +2321,7 @@ func TestFormatTradeDM_OpenWithThreeTiers(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.3},
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.6},
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
@@ -2350,7 +2350,7 @@ func TestCollectPositions_TieredTPATR_CustomTiers(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
@@ -2551,7 +2551,7 @@ func TestFormatTradeDM_TPATRMultipliersFractional(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 1.25, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 2.5, "close_fraction": 1.0},
 				},

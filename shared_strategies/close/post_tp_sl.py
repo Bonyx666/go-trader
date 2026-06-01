@@ -686,7 +686,7 @@ def parse_strategy_tp_sl_after_rules(
     for idx, item in enumerate(tiers_raw):
         if not isinstance(item, dict):
             continue
-        mult_raw = _first_present(item, "atr_multiple", "multiple")
+        mult_raw = item.get("atr_multiple")
         try:
             mult = float(mult_raw) if mult_raw is not None else 0.0
         except (TypeError, ValueError):
@@ -858,8 +858,8 @@ def parse_tp_tier_close_fractions(
         for item in tiers_raw:
             if not isinstance(item, dict):
                 continue
-            mult_raw = _first_present(item, "atr_multiple", "multiple")
-            frac_raw = _first_present(item, "close_fraction", "fraction")
+            mult_raw = item.get("atr_multiple")
+            frac_raw = item.get("close_fraction")
             try:
                 mult = float(mult_raw) if mult_raw is not None else 0.0
                 frac = float(frac_raw) if frac_raw is not None else 0.0

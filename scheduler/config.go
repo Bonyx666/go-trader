@@ -669,6 +669,18 @@ func loadConfig(path string, skipLiveCredentialChecks bool) (*Config, error) {
 			return nil, fmt.Errorf("read config after v13 migration: %w", err)
 		}
 	}
+	// #841: v15 rewrites close-strategy keys on disk (tiers→tp_tiers, unified
+	// regime block, tp_at_pct→tiered_tp_pct). Run synchronously before parse
+	// so validation sees canonical keys after alias reads are dropped.
+	if needsV15CloseMigration(data) {
+		if err := MigrateConfig(path, nil, nil); err != nil {
+			return nil, fmt.Errorf("v15 close-key migration: %w", err)
+		}
+		data, err = os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read config after v15 migration: %w", err)
+		}
+	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
@@ -784,6 +796,7 @@ func loadConfig(path string, skipLiveCredentialChecks bool) (*Config, error) {
 
 	// Apply per-strategy defaults.
 	for i := range cfg.Strategies {
+		normalizeDeprecatedCloseRef(cfg.Strategies[i].CloseStrategy)
 		// Infer platform from ID prefix for backwards compatibility.
 		if cfg.Strategies[i].Platform == "" {
 			switch {

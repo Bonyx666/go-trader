@@ -237,12 +237,12 @@ func parseHLProtectionTiers(raw interface{}) []hlProtectionTier {
 			fmt.Printf("[WARN] hl-protection: tier[%d] is not an object, skipping (got %T)\n", idx, item)
 			continue
 		}
-		multiple, mErr := floatFromAnyChecked(firstPresent(m, "atr_multiple", "multiple"))
+		multiple, mErr := floatFromAnyChecked(m["atr_multiple"])
 		if mErr != nil {
-			fmt.Printf("[WARN] hl-protection: tier[%d] atr_multiple/multiple invalid: %v — tier skipped\n", idx, mErr)
+			fmt.Printf("[WARN] hl-protection: tier[%d] atr_multiple invalid: %v — tier skipped\n", idx, mErr)
 			continue
 		}
-		fraction, fErr := floatFromAnyChecked(firstPresent(m, "close_fraction", "fraction"))
+		fraction, fErr := floatFromAnyChecked(m["close_fraction"])
 		if fErr != nil {
 			fmt.Printf("[WARN] hl-protection: tier[%d] close_fraction/fraction invalid: %v — tier skipped\n", idx, fErr)
 			continue

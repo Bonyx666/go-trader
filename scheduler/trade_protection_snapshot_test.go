@@ -52,7 +52,7 @@ func TestTradeOpenTPTiersJSON_TieredCloseStrategy(t *testing.T) {
 		Type:     "perps",
 		Platform: "hyperliquid",
 		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},

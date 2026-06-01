@@ -80,7 +80,7 @@ func TestBuildStrategyRefsArg(t *testing.T) {
 	sc := StrategyConfig{
 		Args:         []string{"sma_crossover", "BTC/USDT", "1h"},
 		OpenStrategy: StrategyRef{Name: "momentum", Params: map[string]interface{}{"rsi_period": 14}},
-		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{"tiers": []interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{"tp_tiers": []interface{}{
 			map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 		}}},
 	}
@@ -112,9 +112,9 @@ func TestBuildStrategyRefsArg(t *testing.T) {
 	if payload.Closes[0].Name != "tiered_tp_atr" {
 		t.Errorf("closes[0].name = %q, want tiered_tp_atr", payload.Closes[0].Name)
 	}
-	tiers, ok := payload.Closes[0].Params["tiers"].([]interface{})
+	tiers, ok := payload.Closes[0].Params["tp_tiers"].([]interface{})
 	if !ok || len(tiers) != 1 {
-		t.Errorf("closes[0].params[tiers] = %v, want length 1", payload.Closes[0].Params["tiers"])
+		t.Errorf("closes[0].params[tp_tiers] = %v, want length 1", payload.Closes[0].Params["tp_tiers"])
 	}
 }
 

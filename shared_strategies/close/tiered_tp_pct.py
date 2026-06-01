@@ -19,8 +19,8 @@ def _tiers(raw) -> list[tuple[float, float]]:
     parsed = []
     for tier in raw or DEFAULT_TIERS:
         if isinstance(tier, dict):
-            trigger = tier.get("profit_pct", tier.get("pct"))
-            fraction = tier.get("close_fraction", tier.get("fraction"))
+            trigger = tier.get("profit_pct")
+            fraction = tier.get("close_fraction")
         else:
             try:
                 trigger, fraction = tier

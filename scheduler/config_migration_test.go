@@ -768,7 +768,7 @@ func TestMigrateV13StrategyShape(t *testing.T) {
 				"open_strategy":    "tema_cross_bd",
 				"close_strategies": []interface{}{"tiered_tp_atr"},
 				"params": map[string]interface{}{
-					"tiers": []interface{}{
+					"tp_tiers": []interface{}{
 						map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 						map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 					},
@@ -846,9 +846,9 @@ func TestMigrateV13StrategyShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("strategy[0].close_strategies[0].params missing — tiers should have moved here")
 	}
-	tiers, ok := closeParams["tiers"].([]interface{})
+	tiers, ok := closeParams["tp_tiers"].([]interface{})
 	if !ok || len(tiers) != 2 {
-		t.Errorf("close ref params.tiers = %v, want 2-element slice", closeParams["tiers"])
+		t.Errorf("close ref params.tp_tiers = %v, want 2-element slice", closeParams["tp_tiers"])
 	}
 
 	// Strategy 1: empty open_strategy → migration falls back to args[0]=rsi.
@@ -1048,7 +1048,7 @@ func TestLoadConfigMigratesV12EndToEnd(t *testing.T) {
 				"allow_shorts":     true,
 				"params": map[string]interface{}{
 					// Owned by tiered_tp_atr → must move to the close ref.
-					"tiers": []interface{}{
+					"tp_tiers": []interface{}{
 						map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 						map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 					},
@@ -1106,9 +1106,9 @@ func TestLoadConfigMigratesV12EndToEnd(t *testing.T) {
 	if close0.Name != "tiered_tp_atr" {
 		t.Errorf("CloseStrategy.Name = %q, want tiered_tp_atr", close0.Name)
 	}
-	tiers, ok := close0.Params["tiers"].([]interface{})
+	tiers, ok := close0.Params["tp_tiers"].([]interface{})
 	if !ok || len(tiers) != 2 {
-		t.Fatalf("CloseStrategy.Params[tiers] = %v, want 2-element slice", close0.Params["tiers"])
+		t.Fatalf("CloseStrategy.Params[tp_tiers] = %v, want 2-element slice", close0.Params["tp_tiers"])
 	}
 
 	// End-to-end check: tiers reach buildHyperliquidProtectionPlan via the

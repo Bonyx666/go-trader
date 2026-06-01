@@ -123,6 +123,21 @@ def _ensure_close_strategies_path() -> None:
         sys.path.insert(0, _CLOSE_STRATEGIES_DIR)
 
 
+def _rewrite_deprecated_close_ref(name: str, params: dict) -> tuple[str, dict]:
+    """One-window shim: tp_at_pct → single-tier tiered_tp_pct (#841)."""
+    if name != "tp_at_pct":
+        return name, dict(params or {})
+    pct = 0.03
+    if params and params.get("pct") is not None:
+        try:
+            pct = max(float(params.get("pct", 0.03)), 0.0)
+        except (TypeError, ValueError):
+            pct = 0.03
+    return "tiered_tp_pct", {
+        "tp_tiers": [{"profit_pct": pct, "close_fraction": 1.0}],
+    }
+
+
 # Equity-curve points per year per timeframe — used to derive the Sharpe
 # annualization factor. Crypto trades 24/7, so a 1d run has ~365 points/yr,
 # a 4h run has ~365*6, etc. Hardcoding sqrt(365) overstated Sharpe by
@@ -319,9 +334,11 @@ class Backtester:
             name = (ref.get("name") or "").strip()
             if not name:
                 raise ValueError(f"close_strategies ref missing 'name': {ref}")
+            params = dict(ref.get("params") or {})
+            name, params = _rewrite_deprecated_close_ref(name, params)
             self._close_refs.append({
                 "name": name,
-                "params": dict(ref.get("params") or {}),
+                "params": params,
             })
         # Derived views for the per-bar evaluation loop. The list preserves
         # caller-provided order; the params map is keyed by name. If a caller

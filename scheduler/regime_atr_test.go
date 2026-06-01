@@ -35,9 +35,9 @@ func TestParseRegimeATRBlock_UseDefaultsExpandsToBaseline(t *testing.T) {
 func TestParseRegimeATRBlock_RejectsBareLabelKeys(t *testing.T) {
 	// Bare labels without the trend_regime wrapper must be rejected.
 	raw := map[string]interface{}{
-		"trending_up":   map[string]interface{}{"atr": 2.0},
-		"trending_down": map[string]interface{}{"atr": 2.0},
-		"ranging":       map[string]interface{}{"atr": 1.5},
+		"trending_up":   map[string]interface{}{"atr_multiple": 2.0},
+		"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+		"ranging":       map[string]interface{}{"atr_multiple": 1.5},
 	}
 	_, errs := parseRegimeATRBlock(raw, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
 	if len(errs) == 0 {
@@ -59,8 +59,8 @@ func TestParseRegimeATRBlock_RejectsBareLabelKeys(t *testing.T) {
 func TestParseRegimeATRBlock_RequiresExhaustiveLabels(t *testing.T) {
 	raw := map[string]interface{}{
 		regimeClassifierKey: map[string]interface{}{
-			"trending_up": map[string]interface{}{"atr": 2.0},
-			"ranging":     map[string]interface{}{"atr": 1.5},
+			"trending_up": map[string]interface{}{"atr_multiple": 2.0},
+			"ranging":     map[string]interface{}{"atr_multiple": 1.5},
 		},
 	}
 	_, errs := parseRegimeATRBlock(raw, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
@@ -82,9 +82,9 @@ func TestParseRegimeATRBlock_RejectsUseDefaultsAndExplicit(t *testing.T) {
 	raw := map[string]interface{}{
 		"use_defaults": true,
 		regimeClassifierKey: map[string]interface{}{
-			"trending_up":   map[string]interface{}{"atr": 2.0},
-			"trending_down": map[string]interface{}{"atr": 2.0},
-			"ranging":       map[string]interface{}{"atr": 1.5},
+			"trending_up":   map[string]interface{}{"atr_multiple": 2.0},
+			"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+			"ranging":       map[string]interface{}{"atr_multiple": 1.5},
 		},
 	}
 	_, errs := parseRegimeATRBlock(raw, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
@@ -96,9 +96,9 @@ func TestParseRegimeATRBlock_RejectsUseDefaultsAndExplicit(t *testing.T) {
 func TestParseRegimeATRBlock_RejectsCloseFractionOnStopLossSurface(t *testing.T) {
 	raw := map[string]interface{}{
 		regimeClassifierKey: map[string]interface{}{
-			"trending_up":   map[string]interface{}{"atr": 2.0, "close_fraction": 0.5},
-			"trending_down": map[string]interface{}{"atr": 2.0},
-			"ranging":       map[string]interface{}{"atr": 1.5},
+			"trending_up":   map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
+			"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+			"ranging":       map[string]interface{}{"atr_multiple": 1.5},
 		},
 	}
 	_, errs := parseRegimeATRBlock(raw, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
@@ -111,9 +111,9 @@ func TestParseRegimeTPTiers_RejectsMixedShape(t *testing.T) {
 	raw := []interface{}{
 		map[string]interface{}{
 			regimeClassifierKey: map[string]interface{}{
-				"trending_up":   map[string]interface{}{"atr": 3.0, "close_fraction": 0.4},
-				"trending_down": map[string]interface{}{"atr": 3.0, "close_fraction": 0.4},
-				"ranging":       map[string]interface{}{"atr": 1.5, "close_fraction": 0.6},
+				"trending_up":   map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 0.4},
+				"trending_down": map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 0.4},
+				"ranging":       map[string]interface{}{"atr_multiple": 1.5, "close_fraction": 0.6},
 			},
 			"close_fraction": 0.5,
 		},
@@ -159,7 +159,7 @@ func TestStrategyTPTiersForRegime_LegacyScalarUntouched(t *testing.T) {
 		Type:     "perps",
 		Platform: "hyperliquid",
 		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
@@ -188,9 +188,9 @@ func TestStrategyTPTiersForRegime_RegimeAwareNeedsRegime(t *testing.T) {
 
 func TestRegimeATRBlock_UnmarshalThenResolveSurface(t *testing.T) {
 	raw := []byte(`{"trend_regime": {
-		"trending_up": {"atr": 2.0},
-		"trending_down": {"atr": 2.0},
-		"ranging": {"atr": 1.5}
+		"trending_up": {"atr_multiple": 2.0},
+		"trending_down": {"atr_multiple": 2.0},
+		"ranging": {"atr_multiple": 1.5}
 	}}`)
 	var b RegimeATRBlock
 	if err := json.Unmarshal(raw, &b); err != nil {
@@ -427,27 +427,33 @@ func TestValidateRegimeATRConfig_RejectsScalarRegimeMutex(t *testing.T) {
 }
 
 // TestParseRegimeATRBlock_AtrMultipleCanonical locks in the #841 canonical
-// trigger key: "atr_multiple" is accepted, the legacy "atr" alias still parses,
-// and setting both in one entry is rejected as ambiguous.
+// trigger key after v15 dropped the legacy "atr" alias.
 func TestParseRegimeATRBlock_AtrMultipleCanonical(t *testing.T) {
-	mk := func(key string) map[string]interface{} {
-		return map[string]interface{}{
-			regimeClassifierKey: map[string]interface{}{
-				"trending_up":   map[string]interface{}{key: 2.0},
-				"trending_down": map[string]interface{}{key: 2.0},
-				"ranging":       map[string]interface{}{key: 1.5},
-			},
-		}
+	block := map[string]interface{}{
+		regimeClassifierKey: map[string]interface{}{
+			"trending_up":   map[string]interface{}{"atr_multiple": 2.0},
+			"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+			"ranging":       map[string]interface{}{"atr_multiple": 1.5},
+		},
+	}
+	got, errs := parseRegimeATRBlock(block, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if got.TrendRegime["trending_up"].ATR != 2.0 || got.TrendRegime["ranging"].ATR != 1.5 {
+		t.Fatalf("parsed wrong ATR values: %+v", got.TrendRegime)
 	}
 
-	for _, key := range []string{"atr_multiple", "atr"} {
-		got, errs := parseRegimeATRBlock(mk(key), "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
-		if len(errs) > 0 {
-			t.Fatalf("key %q: unexpected errors: %v", key, errs)
-		}
-		if got.TrendRegime["trending_up"].ATR != 2.0 || got.TrendRegime["ranging"].ATR != 1.5 {
-			t.Fatalf("key %q: parsed wrong ATR values: %+v", key, got.TrendRegime)
-		}
+	legacy := map[string]interface{}{
+		regimeClassifierKey: map[string]interface{}{
+			"trending_up":   map[string]interface{}{"atr": 2.0},
+			"trending_down": map[string]interface{}{"atr": 2.0},
+			"ranging":       map[string]interface{}{"atr": 1.5},
+		},
+	}
+	_, legacyErrs := parseRegimeATRBlock(legacy, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
+	if len(legacyErrs) == 0 {
+		t.Fatal("legacy atr key should be rejected")
 	}
 
 	// Both keys in one entry → ambiguous, rejected.
@@ -458,7 +464,7 @@ func TestParseRegimeATRBlock_AtrMultipleCanonical(t *testing.T) {
 			"ranging":       map[string]interface{}{"atr_multiple": 1.5},
 		},
 	}
-	_, errs := parseRegimeATRBlock(both, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
+	_, errs = parseRegimeATRBlock(both, "stop_loss_atr_regime", regimeSurfaceStopLoss, canonicalTrendRegimeLabels)
 	if len(errs) == 0 {
 		t.Fatal("expected error when both atr_multiple and atr are set")
 	}

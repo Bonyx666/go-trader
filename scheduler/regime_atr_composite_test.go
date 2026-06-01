@@ -14,7 +14,7 @@ func composite7StateATR(atr float64) map[string]interface{} {
 	labels := regimeLabelsForClassifier(regimeClassifierComposite)
 	tr := make(map[string]interface{}, len(labels))
 	for _, l := range labels {
-		tr[l] = map[string]interface{}{"atr": atr}
+		tr[l] = map[string]interface{}{"atr_multiple": atr}
 	}
 	return map[string]interface{}{"trend_regime": tr}
 }
@@ -25,7 +25,7 @@ func composite7StateTier(atr, frac float64) map[string]interface{} {
 	labels := regimeLabelsForClassifier(regimeClassifierComposite)
 	tr := make(map[string]interface{}, len(labels))
 	for _, l := range labels {
-		tr[l] = map[string]interface{}{"atr": atr, "close_fraction": frac}
+		tr[l] = map[string]interface{}{"atr_multiple": atr, "close_fraction": frac}
 	}
 	return map[string]interface{}{"trend_regime": tr}
 }
@@ -95,7 +95,7 @@ func TestValidateRegimeATRConfig_CompositeSLAfterTPATRFraction(t *testing.T) {
 		StopLossATRMult: &slMult,
 		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
-			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
+			Params: map[string]interface{}{"tp_tiers": []interface{}{tier0, tier1}},
 		},
 	}
 	cfg := compositeRegimeCfg(sc)
@@ -157,7 +157,7 @@ func TestValidateRegimeATRConfig_CompositeTPTiersExplicit(t *testing.T) {
 		Platform:        "hyperliquid",
 		RegimeATRWindow: "daily",
 		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				composite7StateTier(2.0, 0.5),
 				composite7StateTier(4.0, 1.0),
 			},
@@ -268,13 +268,13 @@ func TestLoadConfig_CompositeStopLossAtrRegime(t *testing.T) {
 			"regime_atr_window": "daily",
 			"stop_loss_atr_regime": {
 				"trend_regime": {
-					"trending_up_clean": {"atr": 2.0},
-					"trending_up_choppy": {"atr": 1.2},
-					"trending_down_clean": {"atr": 2.0},
-					"trending_down_choppy": {"atr": 1.2},
-					"ranging_quiet": {"atr": 1.5},
-					"ranging_volatile": {"atr": 1.0},
-					"ranging_directional": {"atr": 1.5}
+					"trending_up_clean": {"atr_multiple": 2.0},
+					"trending_up_choppy": {"atr_multiple": 1.2},
+					"trending_down_clean": {"atr_multiple": 2.0},
+					"trending_down_choppy": {"atr_multiple": 1.2},
+					"ranging_quiet": {"atr_multiple": 1.5},
+					"ranging_volatile": {"atr_multiple": 1.0},
+					"ranging_directional": {"atr_multiple": 1.5}
 				}
 			}
 		}]
@@ -324,17 +324,17 @@ func TestLoadConfig_CompositeSLAfterTrailFromHere(t *testing.T) {
 					"sl_after": {
 						"trail_from_here": {
 							"trend_regime": {
-								"trending_up_clean": {"atr": 0.75},
-								"trending_up_choppy": {"atr": 0.5},
-								"trending_down_clean": {"atr": 0.75},
-								"trending_down_choppy": {"atr": 0.5},
-								"ranging_directional": {"atr": 0.4},
-								"ranging_volatile": {"atr": 0.4},
-								"ranging_quiet": {"atr": 0.3}
+								"trending_up_clean": {"atr_multiple": 0.75},
+								"trending_up_choppy": {"atr_multiple": 0.5},
+								"trending_down_clean": {"atr_multiple": 0.75},
+								"trending_down_choppy": {"atr_multiple": 0.5},
+								"ranging_directional": {"atr_multiple": 0.4},
+								"ranging_volatile": {"atr_multiple": 0.4},
+								"ranging_quiet": {"atr_multiple": 0.3}
 							}
 						}
 					},
-					"tiers": [
+					"tp_tiers": [
 						{"atr_multiple": 2.0, "close_fraction": 0.5},
 						{"atr_multiple": 4.0, "close_fraction": 1.0}
 					]

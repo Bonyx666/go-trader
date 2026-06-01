@@ -23,19 +23,12 @@ func warnDeprecatedConfigKey(old, canonical string) {
 }
 
 // closeTierListParam returns the take-profit tier list from a close ref's
-// params, preferring the canonical "tp_tiers" key and falling back to the
-// deprecated "tiers" alias (with a one-shot warning). Returns (value, true)
-// when either key is present. Canonical source of the tier-list key across the
-// close family (#841).
+// params via the canonical "tp_tiers" key. Returns (value, true) when present.
 func closeTierListParam(params map[string]interface{}) (interface{}, bool) {
 	if params == nil {
 		return nil, false
 	}
 	if v, ok := params["tp_tiers"]; ok {
-		return v, true
-	}
-	if v, ok := params["tiers"]; ok {
-		warnDeprecatedConfigKey("tiers", "tp_tiers")
 		return v, true
 	}
 	return nil, false

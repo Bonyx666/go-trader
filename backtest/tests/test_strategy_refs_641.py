@@ -51,13 +51,13 @@ def test_backtester_accepts_close_strategy_ref_with_params():
     bt = Backtester(
         initial_capital=1000,
         close_strategies=[
-            {"name": "tiered_tp_atr", "params": {"tiers": [
+            {"name": "tiered_tp_atr", "params": {"tp_tiers": [
                 {"atr_multiple": 2.0, "close_fraction": 1.0},
             ]}},
         ],
     )
     assert bt.close_strategies == ["tiered_tp_atr"]
-    assert bt.close_params["tiered_tp_atr"]["tiers"] == [
+    assert bt.close_params["tiered_tp_atr"]["tp_tiers"] == [
         {"atr_multiple": 2.0, "close_fraction": 1.0}
     ]
 
@@ -72,8 +72,10 @@ def test_backtester_close_strategies_records_refs_on_result():
     )
     result = bt.run(_flat_df(), save=False)
     refs = result["close_strategies"]
-    assert [r["name"] for r in refs] == ["tp_at_pct", "tiered_tp_pct"]
-    assert refs[0]["params"] == {"pct": 0.05}
+    assert [r["name"] for r in refs] == ["tiered_tp_pct", "tiered_tp_pct"]
+    assert refs[0]["params"] == {
+        "tp_tiers": [{"profit_pct": 0.05, "close_fraction": 1.0}],
+    }
     assert refs[1]["params"] == {}
 
 
@@ -97,15 +99,15 @@ def test_parse_close_strategy_arg_bare_name():
 
 def test_parse_close_strategy_arg_json_with_params():
     ref = run_backtest._parse_close_strategy_arg(
-        '{"name": "tiered_tp_atr", "params": {"tiers": [{"atr_multiple": 2.0}]}}'
+        '{"name": "tiered_tp_atr", "params": {"tp_tiers": [{"atr_multiple": 2.0}]}}'
     )
     assert ref["name"] == "tiered_tp_atr"
-    assert ref["params"]["tiers"][0]["atr_multiple"] == 2.0
+    assert ref["params"]["tp_tiers"][0]["atr_multiple"] == 2.0
 
 
 def test_parse_close_strategy_arg_json_without_params():
-    ref = run_backtest._parse_close_strategy_arg('{"name": "tp_at_pct"}')
-    assert ref == {"name": "tp_at_pct", "params": {}}
+    ref = run_backtest._parse_close_strategy_arg('{"name": "tiered_tp_pct"}')
+    assert ref == {"name": "tiered_tp_pct", "params": {}}
 
 
 def test_parse_close_strategy_arg_json_missing_name_rejected():
@@ -115,7 +117,7 @@ def test_parse_close_strategy_arg_json_missing_name_rejected():
 
 def test_parse_close_strategy_arg_invalid_json_rejected():
     with pytest.raises(SystemExit, match="not valid JSON"):
-        run_backtest._parse_close_strategy_arg('{"name": "tp_at_pct"')
+        run_backtest._parse_close_strategy_arg('{"name": "tiered_tp_pct"')
 
 
 def test_parse_close_strategy_arg_non_object_json_rejected():
@@ -140,7 +142,7 @@ def test_load_strategy_config_extracts_refs(tmp_path):
             "type": "perps",
             "open_strategy": {"name": "tema_cross_bd", "params": {"short_period": 5}},
             "close_strategies": [
-                {"name": "tiered_tp_atr", "params": {"tiers": [
+                {"name": "tiered_tp_atr", "params": {"tp_tiers": [
                     {"atr_multiple": 2.0, "close_fraction": 0.5},
                     {"atr_multiple": 3.0, "close_fraction": 1.0},
                 ]}},
@@ -152,7 +154,7 @@ def test_load_strategy_config_extracts_refs(tmp_path):
     assert kwargs["open_strategy"]["params"]["short_period"] == 5
     assert len(kwargs["close_strategies"]) == 1
     assert kwargs["close_strategies"][0]["name"] == "tiered_tp_atr"
-    assert kwargs["close_strategies"][0]["params"]["tiers"][0]["atr_multiple"] == 2.0
+    assert kwargs["close_strategies"][0]["params"]["tp_tiers"][0]["atr_multiple"] == 2.0
 
 
 def test_load_strategy_config_reads_single_close_strategy(tmp_path):
@@ -163,7 +165,7 @@ def test_load_strategy_config_reads_single_close_strategy(tmp_path):
             "id": "hl-temacb-btc",
             "type": "perps",
             "open_strategy": {"name": "tema_cross_bd"},
-            "close_strategy": {"name": "tiered_tp_atr", "params": {"tiers": [
+            "close_strategy": {"name": "tiered_tp_atr", "params": {"tp_tiers": [
                 {"atr_multiple": 2.0, "close_fraction": 0.5},
                 {"atr_multiple": 3.0, "close_fraction": 1.0},
             ]}},
@@ -172,7 +174,7 @@ def test_load_strategy_config_reads_single_close_strategy(tmp_path):
     kwargs = run_backtest.load_strategy_config(path, "hl-temacb-btc")
     assert len(kwargs["close_strategies"]) == 1
     assert kwargs["close_strategies"][0]["name"] == "tiered_tp_atr"
-    assert kwargs["close_strategies"][0]["params"]["tiers"][1]["atr_multiple"] == 3.0
+    assert kwargs["close_strategies"][0]["params"]["tp_tiers"][1]["atr_multiple"] == 3.0
 
 
 def test_load_strategy_config_rejects_multi_legacy_close_array(tmp_path):
@@ -186,7 +188,7 @@ def test_load_strategy_config_rejects_multi_legacy_close_array(tmp_path):
             "open_strategy": {"name": "tema_cross_bd"},
             "close_strategies": [
                 {"name": "tiered_tp_atr"},
-                {"name": "tp_at_pct", "params": {"pct": 0.05}},
+                {"name": "tiered_tp_pct", "params": {"pct": 0.05}},
             ],
         },
     ])
@@ -201,19 +203,19 @@ def test_load_strategy_config_single_close_wins_over_legacy_array(tmp_path):
             "id": "hl-temacb-btc",
             "type": "perps",
             "open_strategy": {"name": "tema_cross_bd"},
-            "close_strategy": {"name": "tp_at_pct", "params": {"pct": 0.05}},
+            "close_strategy": {"name": "tiered_tp_pct", "params": {"pct": 0.05}},
             "close_strategies": [{"name": "tiered_tp_atr"}],
         },
     ])
     kwargs = run_backtest.load_strategy_config(path, "hl-temacb-btc")
-    assert [r["name"] for r in kwargs["close_strategies"]] == ["tp_at_pct"]
+    assert [r["name"] for r in kwargs["close_strategies"]] == ["tiered_tp_pct"]
 
 
 def test_load_strategy_config_rejects_pre_v13(tmp_path):
     path = _write_config(tmp_path, version=12, strategies=[
         # Pre-v13 flat shape: open_strategy is a string, params is flat.
         {"id": "hl-temacb-btc", "open_strategy": "tema_cross_bd",
-         "close_strategies": ["tiered_tp_atr"], "params": {"tiers": []}},
+         "close_strategies": ["tiered_tp_atr"], "params": {"tp_tiers": []}},
     ])
     with pytest.raises(ValueError, match="config_version=12"):
         run_backtest.load_strategy_config(path, "hl-temacb-btc")
@@ -237,7 +239,7 @@ def test_load_strategy_config_then_backtester_parity(tmp_path):
             "id": "hl-temacb-btc",
             "open_strategy": {"name": "tema_cross_bd", "params": {"short_period": 5}},
             "close_strategies": [
-                {"name": "tp_at_pct", "params": {"pct": 0.05}},
+                {"name": "tiered_tp_pct", "params": {"pct": 0.05}},
             ],
         },
     ])
@@ -246,7 +248,7 @@ def test_load_strategy_config_then_backtester_parity(tmp_path):
     bt_inline = Backtester(
         initial_capital=1000,
         open_strategy={"name": "tema_cross_bd", "params": {"short_period": 5}},
-        close_strategies=[{"name": "tp_at_pct", "params": {"pct": 0.05}}],
+        close_strategies=[{"name": "tiered_tp_pct", "params": {"pct": 0.05}}],
     )
     assert bt_from_config.open_strategy == bt_inline.open_strategy
     assert bt_from_config.close_strategies == bt_inline.close_strategies

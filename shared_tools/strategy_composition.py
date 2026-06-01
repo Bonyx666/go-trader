@@ -181,6 +181,15 @@ def _safe_list_strategy_names(list_fn: Optional[Callable[[], Iterable[str]]]) ->
         return []
 
 
+_DEPRECATED_CLOSE_NAMES = {"tp_at_pct": "tiered_tp_pct"}
+
+
+def canonical_close_name(name: str) -> str:
+    """Rewrite deprecated close evaluator names (#841 read shim)."""
+    name = (name or "").strip()
+    return _DEPRECATED_CLOSE_NAMES.get(name, name)
+
+
 def validate_close_strategy_names(
     close_names: Iterable[str],
     get_open_strategy: Callable[[str], object],
@@ -190,13 +199,14 @@ def validate_close_strategy_names(
 ) -> None:
     """Validate explicit close names against close registry, then legacy open fallback."""
     for name in close_names:
+        resolved = canonical_close_name(name)
         try:
-            get_close_strategy(name)
+            get_close_strategy(resolved)
             continue
         except ValueError:
             pass
         try:
-            get_open_strategy(name)
+            get_open_strategy(resolved)
             continue
         except ValueError as exc:
             raise ValueError(
@@ -304,6 +314,7 @@ def evaluate_open_close(
     close_evals: list[CloseEvaluation] = []
     market = market_ctx if market_ctx is not None else _default_market_ctx(df)
     for name in close_names:
+        resolved = canonical_close_name(name)
         # #640: per-close params arrive via close_params_by_name (carried on the
         # matching StrategyRef on the Go side). Implicit-self close still
         # inherits the open strategy's params unless the operator explicitly
@@ -311,15 +322,17 @@ def evaluate_open_close(
         # their registry defaults — never to the open strategy's params.
         if close_params_by_name and name in close_params_by_name:
             base_close_params = close_params_by_name[name]
-        elif name == open_name:
+        elif close_params_by_name and resolved in close_params_by_name:
+            base_close_params = close_params_by_name[resolved]
+        elif name == open_name or resolved == open_name:
             base_close_params = params
         else:
             base_close_params = None
         if close_evaluate is not None:
             try:
-                result = close_evaluate(name, position_ctx or {}, market, base_close_params)
+                result = close_evaluate(resolved, position_ctx or {}, market, base_close_params)
                 close_evals.append(CloseEvaluation(
-                    strategy=name,
+                    strategy=resolved,
                     close_fraction=result.get("close_fraction", 0.0),
                 ))
                 continue
@@ -327,10 +340,10 @@ def evaluate_open_close(
                 if not _is_unknown_close_strategy_error(exc):
                     raise
         close_params = _merge_close_params(base_close_params, position_ctx)
-        result = run(name, close_params)
+        result = run(resolved, close_params)
         signal = _last_signal(result)
         close_evals.append(CloseEvaluation(
-            strategy=name,
+            strategy=resolved,
             close_fraction=_last_close_fraction(result, signal, position_side),
         ))
 

@@ -13,7 +13,7 @@ import (
 func postTPSLTestStrategy(slAfter interface{}, tiers []interface{}) StrategyConfig {
 	atrMult := 1.0
 	params := map[string]interface{}{
-		"tiers": tiers,
+		"tp_tiers": tiers,
 	}
 	if slAfter != nil {
 		params["sl_after"] = slAfter
@@ -301,7 +301,7 @@ func TestParseStrategyTPSLAfterRules(t *testing.T) {
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					// out of order intentionally — should sort by multiple
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0, "sl_after": map[string]interface{}{"atr_mult": 0.25}},
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
@@ -356,7 +356,7 @@ func TestParseStrategyTPSLAfterRules_ReportsMalformed(t *testing.T) {
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"sl_after": "unknown-string",
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5, "sl_after": map[string]interface{}{"kind": "weird"}},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -381,7 +381,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailing(t *testing.T) {
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -408,7 +408,7 @@ func TestValidatePostTPStopLossRules_RejectsNoFixedSL(t *testing.T) {
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -437,7 +437,7 @@ func TestValidatePostTPStopLossRules_AcceptsValid(t *testing.T) {
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0, "sl_after": map[string]interface{}{"atr_mult": 0.5}},
 				},
@@ -568,7 +568,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailFromHereOnManual(t *testing.T) 
 				"sl_after": map[string]interface{}{
 					"trail_from_here": map[string]interface{}{"atr_mult": 1.0},
 				},
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -704,9 +704,9 @@ func TestRunPostTPStopLossAdjustment_RegimeTPATRFraction(t *testing.T) {
 	// ADX 3-label regime tiers. Under "trending_up", tier 0 resolves to mult 2.0.
 	regimeTier := func(atr, frac float64) map[string]interface{} {
 		return map[string]interface{}{"trend_regime": map[string]interface{}{
-			"trending_up":   map[string]interface{}{"atr": atr, "close_fraction": frac},
-			"trending_down": map[string]interface{}{"atr": atr, "close_fraction": frac},
-			"ranging":       map[string]interface{}{"atr": atr, "close_fraction": frac},
+			"trending_up":   map[string]interface{}{"atr_multiple": atr, "close_fraction": frac},
+			"trending_down": map[string]interface{}{"atr_multiple": atr, "close_fraction": frac},
+			"ranging":       map[string]interface{}{"atr_multiple": atr, "close_fraction": frac},
 		}}
 	}
 	tier0 := regimeTier(2.0, 0.5)
@@ -729,7 +729,7 @@ func TestRunPostTPStopLossAdjustment_RegimeTPATRFraction(t *testing.T) {
 		StopLossATRMult: &atrMult,
 		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_live_regime",
-			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
+			Params: map[string]interface{}{"tp_tiers": []interface{}{tier0, tier1}},
 		},
 	}
 	pos := &Position{
@@ -1223,7 +1223,7 @@ func TestValidatePostTPStopLossRules_RejectsSLAfterOnNonTieredTier(t *testing.T)
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_pct", // not the ATR variant
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"pct": 0.05, "close_fraction": 0.5, "sl_after": "breakeven"},
 				},
 			},
@@ -1250,7 +1250,7 @@ func TestValidatePostTPStopLossRules_NoOpWhenAbsent(t *testing.T) {
 		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -1269,7 +1269,7 @@ func TestValidatePostTPStopLossRules_NoOpWhenAbsent(t *testing.T) {
 func slAfterRegimeRaw(entries map[string]float64) map[string]interface{} {
 	tr := map[string]interface{}{}
 	for label, atr := range entries {
-		tr[label] = map[string]interface{}{"atr": atr}
+		tr[label] = map[string]interface{}{"atr_multiple": atr}
 	}
 	return map[string]interface{}{"trend_regime": tr}
 }
@@ -1314,9 +1314,9 @@ func TestParseSLAfterRule_RegimeTrailFromHere(t *testing.T) {
 	raw := map[string]interface{}{
 		"trail_from_here": map[string]interface{}{
 			"trend_regime": map[string]interface{}{
-				"trending_up":   map[string]interface{}{"atr": 1.0},
-				"trending_down": map[string]interface{}{"atr": 1.0},
-				"ranging":       map[string]interface{}{"atr": 0.5},
+				"trending_up":   map[string]interface{}{"atr_multiple": 1.0},
+				"trending_down": map[string]interface{}{"atr_multiple": 1.0},
+				"ranging":       map[string]interface{}{"atr_multiple": 0.5},
 			},
 		},
 	}
@@ -1351,9 +1351,9 @@ func TestParseSLAfterRule_RegimeExplicitKindAtROffset(t *testing.T) {
 	raw := map[string]interface{}{
 		"kind": "atr_offset",
 		"trend_regime": map[string]interface{}{
-			"trending_up":   map[string]interface{}{"atr": 0.25},
-			"trending_down": map[string]interface{}{"atr": 0.25},
-			"ranging":       map[string]interface{}{"atr": 0.0},
+			"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+			"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+			"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 		},
 	}
 	got, err := parseSLAfterRule(raw)
@@ -1375,9 +1375,9 @@ func TestParseSLAfterRule_RegimeRejectsTrailNonPositive(t *testing.T) {
 			raw := map[string]interface{}{
 				"trail_from_here": map[string]interface{}{
 					"trend_regime": map[string]interface{}{
-						"trending_up":   map[string]interface{}{"atr": 1.0},
-						"trending_down": map[string]interface{}{"atr": 1.0},
-						"ranging":       map[string]interface{}{"atr": atr},
+						"trending_up":   map[string]interface{}{"atr_multiple": 1.0},
+						"trending_down": map[string]interface{}{"atr_multiple": 1.0},
+						"ranging":       map[string]interface{}{"atr_multiple": atr},
 					},
 				},
 			}
@@ -1397,7 +1397,7 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 		{
 			name: "bare_label_keys",
 			raw: map[string]interface{}{
-				"trending_up": map[string]interface{}{"atr": 0.25},
+				"trending_up": map[string]interface{}{"atr_multiple": 0.25},
 			},
 			wantInErr: "trend_regime",
 		},
@@ -1405,8 +1405,8 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 			name: "missing_label",
 			raw: map[string]interface{}{
 				"trend_regime": map[string]interface{}{
-					"trending_up": map[string]interface{}{"atr": 0.25},
-					"ranging":     map[string]interface{}{"atr": 0.0},
+					"trending_up": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":     map[string]interface{}{"atr_multiple": 0.0},
 				},
 			},
 			wantInErr: "missing required regime labels",
@@ -1416,9 +1416,9 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 			raw: map[string]interface{}{
 				"use_defaults": true,
 				"trend_regime": map[string]interface{}{
-					"trending_up":   map[string]interface{}{"atr": 0.25},
-					"trending_down": map[string]interface{}{"atr": 0.25},
-					"ranging":       map[string]interface{}{"atr": 0.0},
+					"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+					"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 				},
 			},
 			wantInErr: "use_defaults",
@@ -1428,9 +1428,9 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 			raw: map[string]interface{}{
 				"atr_mult": 0.25,
 				"trend_regime": map[string]interface{}{
-					"trending_up":   map[string]interface{}{"atr": 0.25},
-					"trending_down": map[string]interface{}{"atr": 0.25},
-					"ranging":       map[string]interface{}{"atr": 0.0},
+					"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+					"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 				},
 			},
 			wantInErr: "pick one shape",
@@ -1442,9 +1442,9 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 			raw: map[string]interface{}{
 				"kind": "atr_offset",
 				"trend_regime": map[string]interface{}{
-					"trending_up":   map[string]interface{}{"atr": 0.25},
-					"trending_down": map[string]interface{}{"atr": 0.25},
-					"ranging":       map[string]interface{}{"atr": 0.0},
+					"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+					"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 				},
 				"trail_atr_mult": 99.0,
 			},
@@ -1456,9 +1456,9 @@ func TestParseSLAfterRule_RegimeErrors(t *testing.T) {
 			raw: map[string]interface{}{
 				"trail_from_here": map[string]interface{}{
 					"trend_regime": map[string]interface{}{
-						"trending_up":   map[string]interface{}{"atr": 1.0},
-						"trending_down": map[string]interface{}{"atr": 1.0},
-						"ranging":       map[string]interface{}{"atr": 0.5},
+						"trending_up":   map[string]interface{}{"atr_multiple": 1.0},
+						"trending_down": map[string]interface{}{"atr_multiple": 1.0},
+						"ranging":       map[string]interface{}{"atr_multiple": 0.5},
 					},
 					"atr_offset": -3.0,
 				},
@@ -1535,16 +1535,16 @@ func TestParseStrategyTPSLAfterRules_RegimeRoundTrip(t *testing.T) {
 					"trending_down": 0.0,
 					"ranging":       -0.5,
 				}),
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{
 						"atr_multiple":   2,
 						"close_fraction": 0.5,
 						"sl_after": map[string]interface{}{
 							"trail_from_here": map[string]interface{}{
 								"trend_regime": map[string]interface{}{
-									"trending_up":   map[string]interface{}{"atr": 1.0},
-									"trending_down": map[string]interface{}{"atr": 1.0},
-									"ranging":       map[string]interface{}{"atr": 0.5},
+									"trending_up":   map[string]interface{}{"atr_multiple": 1.0},
+									"trending_down": map[string]interface{}{"atr_multiple": 1.0},
+									"ranging":       map[string]interface{}{"atr_multiple": 0.5},
 								},
 							},
 						},
@@ -1612,13 +1612,13 @@ func TestValidatePostTPStopLossRules_RejectsTrailRegimeOnManual(t *testing.T) {
 				"sl_after": map[string]interface{}{
 					"trail_from_here": map[string]interface{}{
 						"trend_regime": map[string]interface{}{
-							"trending_up":   map[string]interface{}{"atr": 1.0},
-							"trending_down": map[string]interface{}{"atr": 1.0},
-							"ranging":       map[string]interface{}{"atr": 0.5},
+							"trending_up":   map[string]interface{}{"atr_multiple": 1.0},
+							"trending_down": map[string]interface{}{"atr_multiple": 1.0},
+							"ranging":       map[string]interface{}{"atr_multiple": 0.5},
 						},
 					},
 				},
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
@@ -1637,13 +1637,10 @@ func TestValidatePostTPStopLossRules_RejectsTrailRegimeOnManual(t *testing.T) {
 	}
 }
 
-// TestCloseTierListParam locks in the #841 canonical tier-list key resolution:
-// "tp_tiers" is preferred, "tiers" is the deprecated fallback, and when both
-// are present (e.g. a registry default "tiers" merged under an operator
-// "tp_tiers") the canonical "tp_tiers" wins.
+// TestCloseTierListParam locks in the #841 canonical tier-list key: only
+// "tp_tiers" is accepted after v15 migration dropped the "tiers" alias.
 func TestCloseTierListParam(t *testing.T) {
 	tpVal := []interface{}{map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0}}
-	legacyVal := []interface{}{map[string]interface{}{"atr_multiple": 9.0, "close_fraction": 1.0}}
 
 	cases := []struct {
 		name   string
@@ -1652,8 +1649,7 @@ func TestCloseTierListParam(t *testing.T) {
 		wantOK bool
 	}{
 		{"canonical only", map[string]interface{}{"tp_tiers": tpVal}, tpVal, true},
-		{"legacy only", map[string]interface{}{"tiers": legacyVal}, legacyVal, true},
-		{"both — canonical wins", map[string]interface{}{"tp_tiers": tpVal, "tiers": legacyVal}, tpVal, true},
+		{"legacy tiers ignored", map[string]interface{}{"tiers": tpVal}, nil, false},
 		{"neither", map[string]interface{}{"atr_source": "live"}, nil, false},
 		{"nil params", nil, nil, false},
 	}

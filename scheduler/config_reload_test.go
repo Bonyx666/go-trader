@@ -513,7 +513,7 @@ func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
 	tieredOpen := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
@@ -523,7 +523,7 @@ func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
@@ -562,7 +562,7 @@ func TestApplyHotReloadConfigAllowsSLAfterAddWhenFlat(t *testing.T) {
 	tieredOpen := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -571,7 +571,7 @@ func TestApplyHotReloadConfigAllowsSLAfterAddWhenFlat(t *testing.T) {
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -605,7 +605,7 @@ func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -617,7 +617,7 @@ func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing
 				"kind":            "trail_from_here",
 				"trail_from_here": map[string]interface{}{"atr_mult": 1.0},
 			},
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -661,7 +661,7 @@ func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *tes
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{"atr_mult": 0.25},
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -671,12 +671,12 @@ func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *tes
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{
 				"trend_regime": map[string]interface{}{
-					"trending_up":   map[string]interface{}{"atr": 0.25},
-					"trending_down": map[string]interface{}{"atr": 0.25},
-					"ranging":       map[string]interface{}{"atr": 0.0},
+					"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+					"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 				},
 			},
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -719,12 +719,12 @@ func TestApplyHotReloadConfigRejectsSLAfterRegimeValueChangeWithOpenPosition(t *
 			Params: map[string]interface{}{
 				"sl_after": map[string]interface{}{
 					"trend_regime": map[string]interface{}{
-						"trending_up":   map[string]interface{}{"atr": 0.25},
-						"trending_down": map[string]interface{}{"atr": 0.25},
-						"ranging":       map[string]interface{}{"atr": ranging},
+						"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+						"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+						"ranging":       map[string]interface{}{"atr_multiple": ranging},
 					},
 				},
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 				},
 			},
@@ -767,12 +767,12 @@ func TestApplyHotReloadConfigAllowsSLAfterRegimeIdentical(t *testing.T) {
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{
 				"trend_regime": map[string]interface{}{
-					"trending_up":   map[string]interface{}{"atr": 0.25},
-					"trending_down": map[string]interface{}{"atr": 0.25},
-					"ranging":       map[string]interface{}{"atr": 0.0},
+					"trending_up":   map[string]interface{}{"atr_multiple": 0.25},
+					"trending_down": map[string]interface{}{"atr_multiple": 0.25},
+					"ranging":       map[string]interface{}{"atr_multiple": 0.0},
 				},
 			},
-			"tiers": []interface{}{
+			"tp_tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
@@ -806,12 +806,12 @@ func TestApplyHotReloadConfigRejectsRegimeTierMultipleChangeWithTPATRFraction(t 
 		return &StrategyRef{
 			Name: "tiered_tp_atr_regime",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{
 						"trend_regime": map[string]interface{}{
-							"trending_up":   map[string]interface{}{"atr": 2.0},
-							"trending_down": map[string]interface{}{"atr": 2.0},
-							"ranging":       map[string]interface{}{"atr": rangingATR},
+							"trending_up":   map[string]interface{}{"atr_multiple": 2.0},
+							"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+							"ranging":       map[string]interface{}{"atr_multiple": rangingATR},
 						},
 						"close_fraction": 0.5,
 						"sl_after": map[string]interface{}{
@@ -820,9 +820,9 @@ func TestApplyHotReloadConfigRejectsRegimeTierMultipleChangeWithTPATRFraction(t 
 					},
 					map[string]interface{}{
 						"trend_regime": map[string]interface{}{
-							"trending_up":   map[string]interface{}{"atr": 4.0},
-							"trending_down": map[string]interface{}{"atr": 4.0},
-							"ranging":       map[string]interface{}{"atr": 3.0},
+							"trending_up":   map[string]interface{}{"atr_multiple": 4.0},
+							"trending_down": map[string]interface{}{"atr_multiple": 4.0},
+							"ranging":       map[string]interface{}{"atr_multiple": 3.0},
 						},
 						"close_fraction": 1.0,
 					},
@@ -863,20 +863,20 @@ func TestApplyHotReloadConfigAllowsRegimeTierMultipleChangeWithoutSLAfter(t *tes
 		return &StrategyRef{
 			Name: "tiered_tp_atr_regime",
 			Params: map[string]interface{}{
-				"tiers": []interface{}{
+				"tp_tiers": []interface{}{
 					map[string]interface{}{
 						"trend_regime": map[string]interface{}{
-							"trending_up":   map[string]interface{}{"atr": 2.0},
-							"trending_down": map[string]interface{}{"atr": 2.0},
-							"ranging":       map[string]interface{}{"atr": rangingATR},
+							"trending_up":   map[string]interface{}{"atr_multiple": 2.0},
+							"trending_down": map[string]interface{}{"atr_multiple": 2.0},
+							"ranging":       map[string]interface{}{"atr_multiple": rangingATR},
 						},
 						"close_fraction": 0.5,
 					},
 					map[string]interface{}{
 						"trend_regime": map[string]interface{}{
-							"trending_up":   map[string]interface{}{"atr": 4.0},
-							"trending_down": map[string]interface{}{"atr": 4.0},
-							"ranging":       map[string]interface{}{"atr": 3.0},
+							"trending_up":   map[string]interface{}{"atr_multiple": 4.0},
+							"trending_down": map[string]interface{}{"atr_multiple": 4.0},
+							"ranging":       map[string]interface{}{"atr_multiple": 3.0},
 						},
 						"close_fraction": 1.0,
 					},

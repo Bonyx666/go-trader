@@ -10,6 +10,7 @@ _THIS_DIR = os.path.dirname(__file__)
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
+from _helpers import warn_deprecated_close_key
 from tiered_tp_atr import DEFAULT_TIERS as DEFAULT_ATR_TIERS
 from tiered_tp_atr import evaluate as tiered_tp_atr_evaluate
 from tiered_tp_atr_live import evaluate as tiered_tp_atr_live_evaluate
@@ -17,7 +18,6 @@ from tiered_tp_atr_regime import evaluate as tiered_tp_atr_regime_evaluate
 from tiered_tp_atr_live_regime import evaluate as tiered_tp_atr_live_regime_evaluate
 from tiered_tp_pct import DEFAULT_TIERS as DEFAULT_PCT_TIERS
 from tiered_tp_pct import evaluate as tiered_tp_pct_evaluate
-from tp_at_pct import evaluate as tp_at_pct_evaluate
 
 VALID_PLATFORMS: Tuple[str, ...] = ("spot", "futures", "options")
 
@@ -82,7 +82,24 @@ def _normalize_result(name: str, result: Optional[dict]) -> dict:
     return {"close_fraction": close_fraction, "reason": reason}
 
 
+def _rewrite_deprecated_close(name: str, params: Optional[dict]) -> tuple[str, dict]:
+    """One-window shim: tp_at_pct → single-tier tiered_tp_pct (#841)."""
+    if name != "tp_at_pct":
+        return name, dict(params or {})
+    warn_deprecated_close_key("tp_at_pct", "tiered_tp_pct")
+    pct = 0.03
+    if params and params.get("pct") is not None:
+        try:
+            pct = max(float(params.get("pct", 0.03)), 0.0)
+        except (TypeError, ValueError):
+            pct = 0.03
+    return "tiered_tp_pct", {
+        "tp_tiers": [{"profit_pct": pct, "close_fraction": 1.0}],
+    }
+
+
 def evaluate(name: str, position: dict, market: dict, params: Optional[dict] = None) -> dict:
+    name, params = _rewrite_deprecated_close(name, params)
     if name not in STRATEGIES:
         raise ValueError(f"Unknown close strategy: {name}. Available: {list(STRATEGIES.keys())}")
     entry = STRATEGIES[name]
@@ -93,25 +110,19 @@ def evaluate(name: str, position: dict, market: dict, params: Optional[dict] = N
 register(
     "tiered_tp_pct",
     "Tiered take-profit by percentage move from average cost",
-    # default_params keep the legacy "tiers" key during the #841 deprecation
-    # window: default_params merge UNDER operator params per-key, so a canonical
-    # "tp_tiers" default would coexist with (and — via tier_list_from_params
-    # precedence — shadow) an operator's legacy "tiers". Keying the default on
-    # "tiers" lets an operator's "tiers" overwrite it and an operator's
-    # "tp_tiers" win by precedence. Flip to "tp_tiers" when the alias is dropped.
-    {"tiers": list(DEFAULT_PCT_TIERS)},
+    {"tp_tiers": list(DEFAULT_PCT_TIERS)},
 )(tiered_tp_pct_evaluate)
 
 register(
     "tiered_tp_atr",
     "Tiered take-profit by ATR multiples from average cost",
-    {"tiers": list(DEFAULT_ATR_TIERS)},
+    {"tp_tiers": list(DEFAULT_ATR_TIERS)},
 )(tiered_tp_atr_evaluate)
 
 register(
     "tiered_tp_atr_live",
     "Tiered take-profit by ATR multiples using live ATR per tick (atr_source: live|entry)",
-    {"tiers": list(DEFAULT_ATR_TIERS), "atr_source": "live"},
+    {"tp_tiers": list(DEFAULT_ATR_TIERS), "atr_source": "live"},
 )(tiered_tp_atr_live_evaluate)
 
 register(
@@ -128,9 +139,3 @@ register(
     "Regime-aware tiered TP — live ATR + per-tick regime classification (#733)",
     {"atr_source": "live"},
 )(tiered_tp_atr_live_regime_evaluate)
-
-register(
-    "tp_at_pct",
-    "Position-aware percentage take-profit close",
-    {"pct": 0.03},
-)(tp_at_pct_evaluate)

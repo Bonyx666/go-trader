@@ -20,16 +20,10 @@ def warn_deprecated_close_key(old: str, canonical: str) -> None:
 
 
 def tier_list_from_params(params: dict):
-    """Return the take-profit tier list from close params, preferring the
-    canonical ``tp_tiers`` key over the deprecated ``tiers`` alias (#841)."""
+    """Return the take-profit tier list from close params via ``tp_tiers`` (#841)."""
     if not isinstance(params, dict):
         return None
-    if "tp_tiers" in params:
-        return params.get("tp_tiers")
-    if "tiers" in params:
-        warn_deprecated_close_key("tiers", "tp_tiers")
-        return params.get("tiers")
-    return None
+    return params.get("tp_tiers")
 
 
 def float_from(mapping: dict, key: str) -> float:

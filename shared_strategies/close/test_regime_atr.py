@@ -46,9 +46,9 @@ def test_use_defaults_expands(regime_atr):
 
 def test_rejects_bare_label_keys(regime_atr):
     raw = {
-        "trending_up": {"atr": 2.0},
-        "trending_down": {"atr": 2.0},
-        "ranging": {"atr": 1.5},
+        "trending_up": {"atr_multiple": 2.0},
+        "trending_down": {"atr_multiple": 2.0},
+        "ranging": {"atr_multiple": 1.5},
     }
     _, errs = regime_atr.parse_regime_atr_block(
         raw, "stop_loss_atr_regime", regime_atr.SURFACE_STOP_LOSS
@@ -59,8 +59,8 @@ def test_rejects_bare_label_keys(regime_atr):
 def test_requires_exhaustive_labels(regime_atr):
     raw = {
         regime_atr.REGIME_CLASSIFIER_KEY: {
-            "trending_up": {"atr": 2.0},
-            "ranging": {"atr": 1.5},
+            "trending_up": {"atr_multiple": 2.0},
+            "ranging": {"atr_multiple": 1.5},
         }
     }
     _, errs = regime_atr.parse_regime_atr_block(
@@ -72,9 +72,9 @@ def test_requires_exhaustive_labels(regime_atr):
 def test_close_fraction_rejected_on_stop_loss_surface(regime_atr):
     raw = {
         regime_atr.REGIME_CLASSIFIER_KEY: {
-            "trending_up": {"atr": 2.0, "close_fraction": 0.5},
-            "trending_down": {"atr": 2.0},
-            "ranging": {"atr": 1.5},
+            "trending_up": {"atr_multiple": 2.0, "close_fraction": 0.5},
+            "trending_down": {"atr_multiple": 2.0},
+            "ranging": {"atr_multiple": 1.5},
         }
     }
     _, errs = regime_atr.parse_regime_atr_block(
@@ -87,9 +87,9 @@ def test_use_defaults_and_explicit_mutex(regime_atr):
     raw = {
         "use_defaults": True,
         regime_atr.REGIME_CLASSIFIER_KEY: {
-            "trending_up": {"atr": 2.0},
-            "trending_down": {"atr": 2.0},
-            "ranging": {"atr": 1.5},
+            "trending_up": {"atr_multiple": 2.0},
+            "trending_down": {"atr_multiple": 2.0},
+            "ranging": {"atr_multiple": 1.5},
         },
     }
     _, errs = regime_atr.parse_regime_atr_block(
@@ -102,9 +102,9 @@ def test_tier_mixed_shape_rejected(regime_atr):
     raw_tiers = [
         {
             regime_atr.REGIME_CLASSIFIER_KEY: {
-                "trending_up": {"atr": 3.0, "close_fraction": 0.4},
-                "trending_down": {"atr": 3.0, "close_fraction": 0.4},
-                "ranging": {"atr": 1.5, "close_fraction": 0.6},
+                "trending_up": {"atr_multiple": 3.0, "close_fraction": 0.4},
+                "trending_down": {"atr_multiple": 3.0, "close_fraction": 0.4},
+                "ranging": {"atr_multiple": 1.5, "close_fraction": 0.6},
             },
             "close_fraction": 0.5,
         }
@@ -144,25 +144,33 @@ def test_evaluate_missing_regime_noop(tiered_regime):
     assert "missing_position_regime" in result["reason"]
 
 
-def test_atr_multiple_canonical_and_legacy(regime_atr):
-    """#841: 'atr_multiple' is canonical, legacy 'atr' still parses, and setting
-    both in one entry is rejected."""
-    def mk(key):
-        return {
-            regime_atr.REGIME_CLASSIFIER_KEY: {
-                "trending_up": {key: 2.0},
-                "trending_down": {key: 2.0},
-                "ranging": {key: 1.5},
-            }
+def test_atr_multiple_canonical_only(regime_atr):
+    """#841 v15: only atr_multiple is accepted in regime blocks."""
+    block_raw = {
+        regime_atr.REGIME_CLASSIFIER_KEY: {
+            "trending_up": {"atr_multiple": 2.0},
+            "trending_down": {"atr_multiple": 2.0},
+            "ranging": {"atr_multiple": 1.5},
         }
+    }
+    block, errs = regime_atr.parse_regime_atr_block(
+        block_raw, "stop_loss_atr_regime", regime_atr.SURFACE_STOP_LOSS
+    )
+    assert errs == []
+    assert block.trend_regime["trending_up"].atr == 2.0
+    assert block.trend_regime["ranging"].atr == 1.5
 
-    for key in ("atr_multiple", "atr"):
-        block, errs = regime_atr.parse_regime_atr_block(
-            mk(key), "stop_loss_atr_regime", regime_atr.SURFACE_STOP_LOSS
-        )
-        assert errs == [], f"key {key!r}: {errs}"
-        assert block.trend_regime["trending_up"].atr == 2.0
-        assert block.trend_regime["ranging"].atr == 1.5
+    legacy = {
+        regime_atr.REGIME_CLASSIFIER_KEY: {
+            "trending_up": {"atr": 2.0},
+            "trending_down": {"atr": 2.0},
+            "ranging": {"atr": 1.5},
+        }
+    }
+    _, legacy_errs = regime_atr.parse_regime_atr_block(
+        legacy, "stop_loss_atr_regime", regime_atr.SURFACE_STOP_LOSS
+    )
+    assert legacy_errs
 
     both = {
         regime_atr.REGIME_CLASSIFIER_KEY: {

@@ -1317,7 +1317,7 @@ func TestLoadConfigManualDefaultsTPTiersDoesNotOverrideExplicit(t *testing.T) {
 			"max_drawdown_pct": 20,
 			"close_strategies": [{
 				"name": "tiered_tp_atr_live",
-				"params": {"tiers": [{"atr_multiple": 5.0, "close_fraction": 1.0}]}
+				"params": {"tp_tiers": [{"atr_multiple": 5.0, "close_fraction": 1.0}]}
 			}]
 		}]
 	}`
@@ -1326,7 +1326,7 @@ func TestLoadConfigManualDefaultsTPTiersDoesNotOverrideExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-	tiers := cfg.Strategies[0].CloseStrategy.Params["tiers"].([]interface{})
+	tiers := cfg.Strategies[0].CloseStrategy.Params["tp_tiers"].([]interface{})
 	if len(tiers) != 1 {
 		t.Fatalf("tiers length = %d, want 1 (explicit override)", len(tiers))
 	}

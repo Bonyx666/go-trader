@@ -27,7 +27,6 @@ def test_build_close_registry_filters_valid_platforms(registry):
             "tiered_tp_atr_live",
             "tiered_tp_atr_regime",
             "tiered_tp_atr_live_regime",
-            "tp_at_pct",
         }
 
 
@@ -41,7 +40,8 @@ def test_evaluate_rejects_unknown_strategy(registry):
         registry.evaluate("missing", {}, {}, {})
 
 
-def test_tp_at_pct_hits_for_long_and_short(registry):
+def test_tp_at_pct_deprecated_shim(registry):
+    """#841: tp_at_pct is rewritten to single-tier tiered_tp_pct via read shim."""
     long_hit = registry.evaluate(
         "tp_at_pct",
         {"side": "long", "avg_cost": 100, "current_quantity": 1},
@@ -54,8 +54,8 @@ def test_tp_at_pct_hits_for_long_and_short(registry):
         {"mark_price": 97},
         {"pct": 0.03},
     )
-    assert long_hit == {"close_fraction": 1.0, "reason": "tp_at_pct:hit"}
-    assert short_hit == {"close_fraction": 1.0, "reason": "tp_at_pct:hit"}
+    assert long_hit == {"close_fraction": 1.0, "reason": "tiered_tp_pct:0.03"}
+    assert short_hit == {"close_fraction": 1.0, "reason": "tiered_tp_pct:0.03"}
 
 
 def test_tiered_tp_pct_closes_only_unfilled_tier_amount(registry):
@@ -226,25 +226,19 @@ def _load_helpers():
     return mod
 
 
-def test_tier_list_from_params_canonical_and_legacy():
-    """#841: tp_tiers is canonical; tiers is the deprecated fallback; when both
-    are present (registry default 'tiers' merged under operator 'tp_tiers') the
-    canonical key wins."""
+def test_tier_list_from_params_canonical_only():
+    """#841 v15: only tp_tiers is accepted after alias reads were dropped."""
     h = _load_helpers()
     tp = [{"atr_multiple": 2.0, "close_fraction": 1.0}]
-    legacy = [{"atr_multiple": 9.0, "close_fraction": 1.0}]
 
     assert h.tier_list_from_params({"tp_tiers": tp}) == tp
-    assert h.tier_list_from_params({"tiers": legacy}) == legacy
-    assert h.tier_list_from_params({"tp_tiers": tp, "tiers": legacy}) == tp
+    assert h.tier_list_from_params({"tiers": tp}) is None
     assert h.tier_list_from_params({"atr_source": "live"}) is None
     assert h.tier_list_from_params(None) is None
 
 
-def test_evaluate_reads_tp_tiers_and_legacy_tiers_equivalently(registry):
-    """#841: tiered_tp_atr fires identically whether the operator supplies the
-    tier ladder under canonical 'tp_tiers' or the deprecated 'tiers' key, and an
-    operator 'tp_tiers' is not shadowed by the registry default 'tiers'."""
+def test_evaluate_reads_tp_tiers(registry):
+    """#841: tiered_tp_atr reads the canonical tp_tiers ladder."""
     position = {
         "avg_cost": 100.0,
         "current_quantity": 1.0,
@@ -255,11 +249,9 @@ def test_evaluate_reads_tp_tiers_and_legacy_tiers_equivalently(registry):
     market = {"mark_price": 130.0}  # +3 ATR → clears a 2x tier
     ladder = [{"atr_multiple": 2.0, "close_fraction": 1.0}]
 
-    canonical = registry.evaluate("tiered_tp_atr", position, market, {"tp_tiers": ladder})
-    legacy = registry.evaluate("tiered_tp_atr", position, market, {"tiers": ladder})
-    assert canonical["close_fraction"] == pytest.approx(1.0)
-    assert legacy["close_fraction"] == pytest.approx(1.0)
-    assert canonical["close_fraction"] == legacy["close_fraction"]
+    hit = registry.evaluate("tiered_tp_atr", position, market, {"tp_tiers": ladder})
+    assert hit["close_fraction"] == 1.0
+    assert hit["reason"] == "tiered_tp_atr:2"
 
 
 def test_unified_regime_block_evaluator(registry):

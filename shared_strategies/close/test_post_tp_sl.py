@@ -22,7 +22,7 @@ from .post_tp_sl import (
 def _regime(entries):
     return {
         "trend_regime": {
-            label: {"atr": atr} for label, atr in entries.items()
+            label: {"atr_multiple": atr} for label, atr in entries.items()
         }
     }
 
@@ -121,7 +121,7 @@ def test_regime_trail_rejects_non_positive(atr):
 def test_regime_rejects_bare_label_keys():
     # Operator forgot the trend_regime wrapper.
     with pytest.raises(ValueError) as exc:
-        parse_sl_after_rule({"trending_up": {"atr": 0.25}})
+        parse_sl_after_rule({"trending_up": {"atr_multiple": 0.25}})
     assert "trend_regime" in str(exc.value) or "object must contain" in str(exc.value)
 
 
@@ -130,8 +130,8 @@ def test_regime_rejects_missing_labels():
         parse_sl_after_rule(
             {
                 "trend_regime": {
-                    "trending_up": {"atr": 0.25},
-                    "ranging": {"atr": 0.0},
+                    "trending_up": {"atr_multiple": 0.25},
+                    "ranging": {"atr_multiple": 0.0},
                 }
             }
         )
@@ -144,9 +144,9 @@ def test_regime_rejects_use_defaults_with_explicit():
             {
                 "use_defaults": True,
                 "trend_regime": {
-                    "trending_up": {"atr": 0.25},
-                    "trending_down": {"atr": 0.25},
-                    "ranging": {"atr": 0.0},
+                    "trending_up": {"atr_multiple": 0.25},
+                    "trending_down": {"atr_multiple": 0.25},
+                    "ranging": {"atr_multiple": 0.0},
                 },
             }
         )
@@ -158,9 +158,9 @@ def test_regime_rejects_scalar_and_regime_mix():
             {
                 "atr_mult": 0.25,
                 "trend_regime": {
-                    "trending_up": {"atr": 0.25},
-                    "trending_down": {"atr": 0.25},
-                    "ranging": {"atr": 0.0},
+                    "trending_up": {"atr_multiple": 0.25},
+                    "trending_down": {"atr_multiple": 0.25},
+                    "ranging": {"atr_multiple": 0.0},
                 },
             }
         )
@@ -175,9 +175,9 @@ def test_atr_offset_regime_rejects_stray_trail_atr_mult():
             {
                 "kind": "atr_offset",
                 "trend_regime": {
-                    "trending_up": {"atr": 0.25},
-                    "trending_down": {"atr": 0.25},
-                    "ranging": {"atr": 0.0},
+                    "trending_up": {"atr_multiple": 0.25},
+                    "trending_down": {"atr_multiple": 0.25},
+                    "ranging": {"atr_multiple": 0.0},
                 },
                 "trail_atr_mult": 99.0,
             }
@@ -191,9 +191,9 @@ def test_trail_regime_rejects_stray_atr_offset():
             {
                 "trail_from_here": {
                     "trend_regime": {
-                        "trending_up": {"atr": 1.0},
-                        "trending_down": {"atr": 1.0},
-                        "ranging": {"atr": 0.5},
+                        "trending_up": {"atr_multiple": 1.0},
+                        "trending_down": {"atr_multiple": 1.0},
+                        "ranging": {"atr_multiple": 0.5},
                     },
                     "atr_offset": -3.0,
                 }
@@ -260,7 +260,7 @@ def test_parse_strategy_tp_sl_after_rules_regime():
                         "ranging": -0.5,
                     }
                 ),
-                "tiers": [
+                "tp_tiers": [
                     {
                         "atr_multiple": 2,
                         "close_fraction": 0.5,
@@ -301,13 +301,13 @@ def test_parse_strategy_tp_sl_after_rules_regime_composite_labels():
     close_refs = [{
         "name": "tiered_tp_atr_regime",
         "params": {
-            "tiers": [
+            "tp_tiers": [
                 {
-                    "trend_regime": {label: {"atr": 2.0} for label in labels},
+                    "trend_regime": {label: {"atr_multiple": 2.0} for label in labels},
                     "close_fraction": 0.5,
                 },
                 {
-                    "trend_regime": {label: {"atr": 4.0} for label in labels},
+                    "trend_regime": {label: {"atr_multiple": 4.0} for label in labels},
                     "close_fraction": 1.0,
                 },
             ],
@@ -351,7 +351,7 @@ def test_validate_rejects_trail_regime_on_manual():
                         }
                     )
                 },
-                "tiers": [
+                "tp_tiers": [
                     {"atr_multiple": 2, "close_fraction": 0.5},
                     {"atr_multiple": 3, "close_fraction": 1.0},
                 ],
