@@ -37,7 +37,7 @@ type PositionCtx struct {
 }
 
 func usesOpenCloseConfig(sc StrategyConfig) bool {
-	return strings.TrimSpace(sc.OpenStrategy.Name) != "" || len(sc.CloseStrategies) > 0
+	return strings.TrimSpace(sc.OpenStrategy.Name) != "" || sc.CloseStrategy != nil
 }
 
 func strategyNameFromArgs(args []string) string {
@@ -94,15 +94,19 @@ func appendOpenCloseArgs(args []string, sc StrategyConfig, pos PositionCtx) []st
 // configs that rely on the positional strategy arg keep working post-migration.
 func buildStrategyRefsArg(sc StrategyConfig) ([]string, error) {
 	openName := effectiveOpenStrategy(sc)
-	if openName == "" && len(sc.CloseStrategies) == 0 {
+	if openName == "" && sc.CloseStrategy == nil {
 		return nil, nil
 	}
 	payload := map[string]interface{}{}
 	if openName != "" {
 		payload["open"] = StrategyRef{Name: openName, Params: sc.OpenStrategy.Params}
 	}
-	if len(sc.CloseStrategies) > 0 {
-		payload["closes"] = sc.CloseStrategies
+	// #842: a strategy has a single close. The Go↔Python wire still carries a
+	// "closes" list (length ≤ 1) so the Python composition layer's generic
+	// evaluator stays unchanged; max close_fraction over one element is the
+	// element itself.
+	if refs := sc.closeRefs(); len(refs) > 0 {
+		payload["closes"] = refs
 	}
 	blob, err := json.Marshal(payload)
 	if err != nil {
@@ -200,16 +204,13 @@ func formatParamsSummary(params map[string]interface{}) string {
 }
 
 func explicitCloseStrategies(sc StrategyConfig) []string {
-	if len(sc.CloseStrategies) == 0 {
+	if sc.CloseStrategy == nil {
 		return nil
 	}
-	out := make([]string, 0, len(sc.CloseStrategies))
-	for _, ref := range sc.CloseStrategies {
-		if trimmed := strings.TrimSpace(ref.Name); trimmed != "" {
-			out = append(out, trimmed)
-		}
+	if trimmed := strings.TrimSpace(sc.CloseStrategy.Name); trimmed != "" {
+		return []string{trimmed}
 	}
-	return out
+	return nil
 }
 
 func maxCloseFraction(fractions []float64) float64 {

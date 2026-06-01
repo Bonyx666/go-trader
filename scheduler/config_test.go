@@ -419,15 +419,15 @@ func TestValidateConfigValidConfig(t *testing.T) {
 func TestValidateConfigOpenCloseFields(t *testing.T) {
 	cfg := Config{
 		Strategies: []StrategyConfig{{
-			ID:              "test-spot",
-			Type:            "spot",
-			Platform:        "binanceus",
-			Script:          "shared_scripts/check_strategy.py",
-			Args:            []string{"sma_crossover", "BTC/USDT", "1h"},
-			OpenStrategy:    StrategyRef{Name: "momentum"},
-			CloseStrategies: []StrategyRef{{Name: "rsi"}, {Name: "macd"}},
-			Capital:         1000,
-			MaxDrawdownPct:  60,
+			ID:             "test-spot",
+			Type:           "spot",
+			Platform:       "binanceus",
+			Script:         "shared_scripts/check_strategy.py",
+			Args:           []string{"sma_crossover", "BTC/USDT", "1h"},
+			OpenStrategy:   StrategyRef{Name: "momentum"},
+			CloseStrategy:  &StrategyRef{Name: "rsi"},
+			Capital:        1000,
+			MaxDrawdownPct: 60,
 		}},
 		PortfolioRisk: &PortfolioRiskConfig{MaxDrawdownPct: 25, WarnThresholdPct: 80},
 	}
@@ -436,17 +436,46 @@ func TestValidateConfigOpenCloseFields(t *testing.T) {
 	}
 }
 
+// #842: a legacy close_strategies array with >1 entry no longer composes via
+// max close_fraction — LoadConfig must reject it with the strategy id so the
+// operator collapses to a single profit-taking close.
+func TestLoadConfigRejectsMultipleCloseStrategies(t *testing.T) {
+	dir := t.TempDir()
+	cfgJSON := `{
+		"config_version": 14,
+		"strategies": [{
+			"id": "multi-close",
+			"type": "spot",
+			"platform": "binanceus",
+			"script": "shared_scripts/check_strategy.py",
+			"args": ["sma_crossover", "BTC/USDT", "1h"],
+			"open_strategy": {"name": "momentum"},
+			"close_strategies": [{"name": "rsi"}, {"name": "macd"}],
+			"capital": 1000,
+			"max_drawdown_pct": 60
+		}]
+	}`
+	path := writeTestConfig(t, dir, cfgJSON)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected rejection of multi-entry close_strategies array")
+	}
+	if !strings.Contains(err.Error(), "single close_strategy") {
+		t.Fatalf("error %q should explain the #842 single-close collapse", err.Error())
+	}
+}
+
 func TestValidateConfigOpenCloseRejectsOptions(t *testing.T) {
 	cfg := Config{
 		Strategies: []StrategyConfig{{
-			ID:              "test-options",
-			Type:            "options",
-			Platform:        "deribit",
-			Script:          "shared_scripts/check_options.py",
-			Args:            []string{"vol_mean_reversion", "BTC", "1h"},
-			CloseStrategies: []StrategyRef{{Name: "rsi"}},
-			Capital:         1000,
-			MaxDrawdownPct:  40,
+			ID:             "test-options",
+			Type:           "options",
+			Platform:       "deribit",
+			Script:         "shared_scripts/check_options.py",
+			Args:           []string{"vol_mean_reversion", "BTC", "1h"},
+			CloseStrategy:  &StrategyRef{Name: "rsi"},
+			Capital:        1000,
+			MaxDrawdownPct: 40,
 		}},
 		PortfolioRisk: &PortfolioRiskConfig{MaxDrawdownPct: 25, WarnThresholdPct: 80},
 	}
@@ -454,22 +483,22 @@ func TestValidateConfigOpenCloseRejectsOptions(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected options open/close validation error")
 	}
-	if !strings.Contains(err.Error(), "close_strategies") {
-		t.Fatalf("error %q should mention close_strategies field", err.Error())
+	if !strings.Contains(err.Error(), "close_strategy") {
+		t.Fatalf("error %q should mention close_strategy field", err.Error())
 	}
 }
 
 func TestValidateConfigCloseStrategyName(t *testing.T) {
 	cfg := Config{
 		Strategies: []StrategyConfig{{
-			ID:              "test-spot",
-			Type:            "spot",
-			Platform:        "binanceus",
-			Script:          "shared_scripts/check_strategy.py",
-			Args:            []string{"sma_crossover", "BTC/USDT", "1h"},
-			CloseStrategies: []StrategyRef{{Name: "bad name"}},
-			Capital:         1000,
-			MaxDrawdownPct:  60,
+			ID:             "test-spot",
+			Type:           "spot",
+			Platform:       "binanceus",
+			Script:         "shared_scripts/check_strategy.py",
+			Args:           []string{"sma_crossover", "BTC/USDT", "1h"},
+			CloseStrategy:  &StrategyRef{Name: "bad name"},
+			Capital:        1000,
+			MaxDrawdownPct: 60,
 		}},
 		PortfolioRisk: &PortfolioRiskConfig{MaxDrawdownPct: 25, WarnThresholdPct: 80},
 	}
@@ -477,23 +506,23 @@ func TestValidateConfigCloseStrategyName(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected close strategy name validation error")
 	}
-	if !strings.Contains(err.Error(), "close_strategies[0]") {
-		t.Fatalf("error %q should mention close_strategies[0]", err.Error())
+	if !strings.Contains(err.Error(), "close_strategy") {
+		t.Fatalf("error %q should mention close_strategy", err.Error())
 	}
 }
 
 func TestValidateConfigOpenCloseDefersRegistryLookupToCheckScript(t *testing.T) {
 	cfg := Config{
 		Strategies: []StrategyConfig{{
-			ID:              "test-spot",
-			Type:            "spot",
-			Platform:        "binanceus",
-			Script:          "shared_scripts/check_strategy.py",
-			Args:            []string{"sma_crossover", "BTC/USDT", "1h"},
-			OpenStrategy:    StrategyRef{Name: "not_a_strategy"},
-			CloseStrategies: []StrategyRef{{Name: "rsi"}},
-			Capital:         1000,
-			MaxDrawdownPct:  60,
+			ID:             "test-spot",
+			Type:           "spot",
+			Platform:       "binanceus",
+			Script:         "shared_scripts/check_strategy.py",
+			Args:           []string{"sma_crossover", "BTC/USDT", "1h"},
+			OpenStrategy:   StrategyRef{Name: "not_a_strategy"},
+			CloseStrategy:  &StrategyRef{Name: "rsi"},
+			Capital:        1000,
+			MaxDrawdownPct: 60,
 		}},
 		PortfolioRisk: &PortfolioRiskConfig{MaxDrawdownPct: 25, WarnThresholdPct: 80},
 	}
@@ -1237,10 +1266,10 @@ func TestLoadConfigManualDefaultsTPTiersOverride(t *testing.T) {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 	sc := cfg.Strategies[0]
-	if len(sc.CloseStrategies) != 1 || sc.CloseStrategies[0].Name != "tiered_tp_atr_live" {
-		t.Fatalf("CloseStrategies = %+v, want single tiered_tp_atr_live entry", sc.CloseStrategies)
+	if sc.CloseStrategy == nil || sc.CloseStrategy.Name != "tiered_tp_atr_live" {
+		t.Fatalf("CloseStrategy = %+v, want single tiered_tp_atr_live entry", sc.CloseStrategy)
 	}
-	tiersAny, ok := sc.CloseStrategies[0].Params["tp_tiers"]
+	tiersAny, ok := sc.CloseStrategy.Params["tp_tiers"]
 	if !ok {
 		t.Fatal("close strategy params missing tp_tiers")
 	}
@@ -1297,7 +1326,7 @@ func TestLoadConfigManualDefaultsTPTiersDoesNotOverrideExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-	tiers := cfg.Strategies[0].CloseStrategies[0].Params["tiers"].([]interface{})
+	tiers := cfg.Strategies[0].CloseStrategy.Params["tiers"].([]interface{})
 	if len(tiers) != 1 {
 		t.Fatalf("tiers length = %d, want 1 (explicit override)", len(tiers))
 	}
@@ -1333,7 +1362,7 @@ func TestLoadConfigManualDefaultsAbsentPreservesHardcodedDefaults(t *testing.T) 
 	if sc.StopLossATRMult == nil || *sc.StopLossATRMult != defaultManualStopLossATRMult {
 		t.Errorf("StopLossATRMult = %v, want %g (hardcoded fallback)", sc.StopLossATRMult, defaultManualStopLossATRMult)
 	}
-	tiers := sc.CloseStrategies[0].Params["tp_tiers"].([]interface{})
+	tiers := sc.CloseStrategy.Params["tp_tiers"].([]interface{})
 	if len(tiers) != 2 {
 		t.Fatalf("tiers length = %d, want 2 (hardcoded fallback)", len(tiers))
 	}

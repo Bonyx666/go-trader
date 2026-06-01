@@ -81,7 +81,7 @@ func unifiedRegimeScalarParams(params map[string]interface{}, regime string) (sc
 // resolution: the unified close owns the (ATR-based) stop loss, armed on the
 // cycle after open like stop_loss_atr_regime. #841 2b.
 func strategyUsesUnifiedRegimeClose(sc StrategyConfig) bool {
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if n != "tiered_tp_atr_regime" && n != "tiered_tp_atr_live_regime" {
 			continue
@@ -98,7 +98,7 @@ func strategyUsesUnifiedRegimeClose(sc StrategyConfig) bool {
 // when the strategy isn't unified, the label is absent, or the label set no
 // stop_loss_atr (slMult 0 → no fixed SL placed for that regime). #841 2b.
 func unifiedCloseStopLossATR(sc StrategyConfig, regime string) (float64, bool) {
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if n != "tiered_tp_atr_regime" && n != "tiered_tp_atr_live_regime" {
 			continue
@@ -118,7 +118,7 @@ func unifiedCloseStopLossATR(sc StrategyConfig, regime string) (float64, bool) {
 // unifiedCloseRefParams returns the params of a strategy's unified per-regime
 // close ref, or nil if it doesn't use one.
 func unifiedCloseRefParams(sc StrategyConfig) map[string]interface{} {
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if n != "tiered_tp_atr_regime" && n != "tiered_tp_atr_live_regime" {
 			continue

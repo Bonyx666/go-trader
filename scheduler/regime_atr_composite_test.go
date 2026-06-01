@@ -93,10 +93,10 @@ func TestValidateRegimeATRConfig_CompositeSLAfterTPATRFraction(t *testing.T) {
 		Platform:        "hyperliquid",
 		RegimeATRWindow: "daily",
 		StopLossATRMult: &slMult,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
 			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
-		}},
+		},
 	}
 	cfg := compositeRegimeCfg(sc)
 	if errs := validateRegimeATRConfig(cfg); len(errs) != 0 {
@@ -156,14 +156,12 @@ func TestValidateRegimeATRConfig_CompositeTPTiersExplicit(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		RegimeATRWindow: "daily",
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{
-				"tiers": []interface{}{
-					composite7StateTier(2.0, 0.5),
-					composite7StateTier(4.0, 1.0),
-				},
-			}},
-		},
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{
+			"tiers": []interface{}{
+				composite7StateTier(2.0, 0.5),
+				composite7StateTier(4.0, 1.0),
+			},
+		}},
 	}
 	if errs := validateRegimeATRConfig(compositeRegimeCfg(sc)); len(errs) != 0 {
 		t.Fatalf("composite tiered_tp_atr_regime must validate, got: %v", errs)
@@ -194,11 +192,9 @@ func TestResolveRegimeTPTiers_CompositeRuntime(t *testing.T) {
 // tier path under a composite runtime label.
 func TestStrategyTPTiersForRegime_CompositeUseDefaults(t *testing.T) {
 	sc := StrategyConfig{
-		Type:     "perps",
-		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
-		},
+		Type:          "perps",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
 	}
 	tiers := strategyTPTiersForRegime(sc, "trending_up_clean")
 	if len(tiers) != 2 {

@@ -176,12 +176,12 @@ func TestReconcileSharedCoin_TPDust_BooksBothTiers(t *testing.T) {
 	sc := StrategyConfig{
 		ID: ownerID, Platform: "hyperliquid", Type: "perps",
 		Args: []string{"sma", "BTC", "1h", "--mode=live"},
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
-		}}},
+		}},
 	}
 	state := &AppState{
 		Strategies: map[string]*StrategyState{

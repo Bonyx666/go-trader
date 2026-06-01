@@ -51,14 +51,12 @@ func TestTradeOpenTPTiersJSON_TieredCloseStrategy(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr", Params: map[string]interface{}{
-				"tiers": []interface{}{
-					map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
-					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
-				},
-			}},
-		},
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
+			"tiers": []interface{}{
+				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
+				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
+			},
+		}},
 	}
 	got := tradeOpenTPTiersJSON(sc)
 	if got == "" {
@@ -81,11 +79,9 @@ func TestTradeOpenTPTiersJSON_TieredCloseStrategy(t *testing.T) {
 
 func TestTradeOpenTPTiersJSON_NoTieredCloseReturnsEmpty(t *testing.T) {
 	sc := StrategyConfig{
-		Type:     "perps",
-		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{
-			{Name: "tp_at_pct", Params: map[string]interface{}{"pct": 0.05}},
-		},
+		Type:          "perps",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tp_at_pct", Params: map[string]interface{}{"pct": 0.05}},
 	}
 	if got := tradeOpenTPTiersJSON(sc); got != "" {
 		t.Fatalf("expected empty (no tiered_tp_atr*), got %q", got)

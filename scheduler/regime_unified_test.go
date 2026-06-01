@@ -172,7 +172,7 @@ func TestUnifiedRegimeSLFolding(t *testing.T) {
 	sc := StrategyConfig{
 		ID: "hl-unified-sl", Platform: "hyperliquid", Type: "perps",
 		MaxDrawdownPct: 25,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live_regime",
 			Params: map[string]interface{}{
 				regimeClassifierKey: map[string]interface{}{
@@ -181,7 +181,7 @@ func TestUnifiedRegimeSLFolding(t *testing.T) {
 					"ranging":       map[string]interface{}{"stop_loss_atr": 0.8, "tp_tiers": tiers(1.0, 2.0)},
 				},
 			},
-		}},
+		},
 	}
 
 	if !strategyUsesUnifiedRegimeClose(sc) {
@@ -220,10 +220,10 @@ func TestValidateRegimeATRConfig_UnifiedBlockAccepted(t *testing.T) {
 				ID:       "hl-unified",
 				Type:     "perps",
 				Platform: "hyperliquid",
-				CloseStrategies: []StrategyRef{{
+				CloseStrategy: &StrategyRef{
 					Name:   "tiered_tp_atr_live_regime",
 					Params: params,
-				}},
+				},
 			}},
 		}
 	}
@@ -252,7 +252,7 @@ func TestValidateUnifiedCloseSoleOwner(t *testing.T) {
 	mk := func() StrategyConfig {
 		return StrategyConfig{
 			ID: "hl-x", Type: "perps", Platform: "hyperliquid",
-			CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live_regime", Params: unifiedBlock()}},
+			CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live_regime", Params: unifiedBlock()},
 		}
 	}
 	// Clean: no strategy-level stop → no errors.
@@ -279,7 +279,7 @@ func TestValidateUnifiedCloseSoleOwner(t *testing.T) {
 // reload validator can reject it while a position is open.
 func TestUnifiedCloseParamsEqualForReload(t *testing.T) {
 	mk := func(params map[string]interface{}) StrategyConfig {
-		return StrategyConfig{CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live_regime", Params: params}}}
+		return StrategyConfig{CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live_regime", Params: params}}
 	}
 	a := mk(unifiedBlock())
 	if !unifiedCloseParamsEqualForReload(a, mk(unifiedBlock())) {

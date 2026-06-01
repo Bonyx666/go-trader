@@ -1596,7 +1596,7 @@ func TestReconcileSharedCoin_TPPartialFill_DecrementsOwnerAndBooksPnL(t *testing
 	}
 
 	allStrategies := []StrategyConfig{
-		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
 		{ID: "hl-peer-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
 	}
 	positions := []HLPosition{{Coin: "ETH", Size: 0.75, EntryPrice: avgCost, Leverage: 10}}
@@ -1687,7 +1687,7 @@ func TestReconcileSharedCoin_TPPartialFill_Short(t *testing.T) {
 	}
 
 	allStrategies := []StrategyConfig{
-		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
 		{ID: "hl-peer-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
 	}
 	positions := []HLPosition{{Coin: "ETH", Size: -0.75, EntryPrice: avgCost, Leverage: 10}}
@@ -1751,7 +1751,7 @@ func TestReconcileSharedCoin_TPPartialFill_PaddedNeverPlacedTierDoesNotAttribute
 	}
 
 	allStrategies := []StrategyConfig{
-		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
 		{ID: "hl-peer-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
 	}
 	positions := []HLPosition{{Coin: "ETH", Size: 0.75, EntryPrice: 3000, Leverage: 10}}
@@ -1804,8 +1804,8 @@ func TestReconcileSharedCoin_TPPartialFill_MultipleCandidatesDoesNotAttribute(t 
 	}
 
 	allStrategies := []StrategyConfig{
-		{ID: "hl-owner-a-eth", Platform: "hyperliquid", Type: "perps", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
-		{ID: "hl-owner-b-eth", Platform: "hyperliquid", Type: "perps", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}}, Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-owner-a-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-owner-b-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
 	}
 	positions := []HLPosition{{Coin: "ETH", Size: 0.75, EntryPrice: 3000, Leverage: 10}}
 	prices := map[string]float64{"ETH": 3200}
@@ -3266,12 +3266,12 @@ func TestReconcileManualPositionExternalClose(t *testing.T) {
 func tieredTPATRSC() StrategyConfig {
 	return StrategyConfig{
 		ID: "hl-tp",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
-		}}},
+		}},
 	}
 }
 

@@ -1469,8 +1469,8 @@ func TestCollectPositions_AllFragments(t *testing.T) {
 // ATR when close_strategies includes tiered_tp_atr.
 func TestCollectPositions_TieredTPATR_Long(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1491,8 +1491,8 @@ func TestCollectPositions_TieredTPATR_Long(t *testing.T) {
 
 func TestCollectPositions_TieredTPATR_Short(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1512,8 +1512,8 @@ func TestCollectPositions_TieredTPATR_Short(t *testing.T) {
 // for tiered_tp_atr_live (same default tiers as tiered_tp_atr; PR #529 review).
 func TestCollectPositions_TieredTPATRLive_Long(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-live-btc",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		ID:            "hl-tatr-live-btc",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1534,7 +1534,7 @@ func TestCollectPositions_TieredTPATRLive_Long(t *testing.T) {
 }
 
 func TestCollectPositions_TieredTPATR_OmittedWithoutCloseStrategy(t *testing.T) {
-	sc := StrategyConfig{ID: "hl-rsi-btc", CloseStrategies: []StrategyRef{{Name: "tiered_tp_pct"}}}
+	sc := StrategyConfig{ID: "hl-rsi-btc", CloseStrategy: &StrategyRef{Name: "tiered_tp_pct"}}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
 			"BTC/USDT": {Symbol: "BTC/USDT", Quantity: 0.025, AvgCost: 63500, Side: "long", EntryATR: 1000},
@@ -1547,7 +1547,7 @@ func TestCollectPositions_TieredTPATR_OmittedWithoutCloseStrategy(t *testing.T) 
 }
 
 func TestCollectPositions_TieredTPATR_OmittedWhenEntryATRZero(t *testing.T) {
-	sc := StrategyConfig{ID: "hl-tatr-btc", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}}}
+	sc := StrategyConfig{ID: "hl-tatr-btc", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"}}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
 			"BTC/USDT": {Symbol: "BTC/USDT", Quantity: 0.025, AvgCost: 63500, Side: "long", EntryATR: 0},
@@ -1565,8 +1565,8 @@ func TestCollectPositions_TieredTPATR_OmittedWhenEntryATRZero(t *testing.T) {
 // as still pending. Pending tiers retain the price-and-percent format.
 func TestCollectPositions_TieredTPATR_FilledTierMarked(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1595,8 +1595,8 @@ func TestCollectPositions_TieredTPATR_FilledTierMarked(t *testing.T) {
 // must NOT be rendered as filled (no shrink vs InitialQuantity).
 func TestCollectPositions_TieredTPATR_NoFillBeforeProtectionSync(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1625,10 +1625,10 @@ func TestCollectPositions_TieredTPATR_NoFillBeforeProtectionSync(t *testing.T) {
 func TestCollectPositions_TieredTPATRRegime_StampedRegime(t *testing.T) {
 	sc := StrategyConfig{
 		ID: "hl-reg-btc",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
 			Params: map[string]interface{}{"use_defaults": true},
-		}},
+		},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -1652,7 +1652,7 @@ func TestCollectPositions_TieredTPATRRegime_StampedRegime(t *testing.T) {
 // leverage → date ordering when tiered_tp_atr is configured (#528).
 func TestCollectPositions_AllFragments_WithTieredTP(t *testing.T) {
 	opened := time.Date(2026, 4, 28, 14, 32, 0, 0, time.UTC)
-	sc := StrategyConfig{ID: "hl-tatr-btc", CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}}}
+	sc := StrategyConfig{ID: "hl-tatr-btc", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"}}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
 			"BTC/USDT": {
@@ -2111,7 +2111,7 @@ func TestFormatTradeDMPlain_OpenWithCustomTiers(t *testing.T) {
 		ID:       "hl-tema-eth-live",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -2119,7 +2119,7 @@ func TestFormatTradeDMPlain_OpenWithCustomTiers(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	trade := Trade{
 		Symbol: "ETH", Side: "buy", Quantity: 0.1, Price: 2316.90, Value: 231.69,
@@ -2248,10 +2248,10 @@ func TestFormatCategorySummary_LifetimeStatsNoFallback(t *testing.T) {
 // TP1, and TP2 on the extras line (#561).
 func TestFormatTradeDM_OpenWithATRAndTP(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	trade := Trade{
 		Symbol:   "BTC",
@@ -2275,14 +2275,14 @@ func TestFormatTradeDM_OpenWithATRAndTP(t *testing.T) {
 }
 
 // TestFormatTradeDM_OpenWithCustomTiers verifies that the trade DM reads tier
-// multiples from sc.CloseStrategies[].Params["tiers"] rather than hardcoded
+// multiples from sc.CloseStrategy.Params["tiers"] rather than hardcoded
 // 1×/2× (#659). Reproduces the original issue where 2×/3× config showed 1×/2×.
 func TestFormatTradeDM_OpenWithCustomTiers(t *testing.T) {
 	sc := StrategyConfig{
 		ID:       "hl-tema-eth-live",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -2290,7 +2290,7 @@ func TestFormatTradeDM_OpenWithCustomTiers(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	trade := Trade{
 		Symbol:   "ETH",
@@ -2318,7 +2318,7 @@ func TestFormatTradeDM_OpenWithThreeTiers(t *testing.T) {
 		ID:       "hl-tatr-btc",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -2327,7 +2327,7 @@ func TestFormatTradeDM_OpenWithThreeTiers(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	trade := Trade{
 		Symbol: "BTC", Side: "buy", Quantity: 0.01, Price: 63500.0, Value: 635.0,
@@ -2347,7 +2347,7 @@ func TestFormatTradeDM_OpenWithThreeTiers(t *testing.T) {
 func TestCollectPositions_TieredTPATR_CustomTiers(t *testing.T) {
 	sc := StrategyConfig{
 		ID: "hl-tema-eth-live",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -2355,7 +2355,7 @@ func TestCollectPositions_TieredTPATR_CustomTiers(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	ss := &StrategyState{
 		Positions: map[string]*Position{
@@ -2517,10 +2517,10 @@ func TestFormatTradeDM_SLNoATRMultiplier(t *testing.T) {
 // own ATR multiplier (#665). Default tiers are 1×/2×.
 func TestFormatTradeDM_TPATRMultipliers(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	trade := Trade{
 		Symbol:   "BTC",
@@ -2548,7 +2548,7 @@ func TestFormatTradeDM_TPATRMultipliersFractional(t *testing.T) {
 		ID:       "hl-tatr-btc",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -2556,7 +2556,7 @@ func TestFormatTradeDM_TPATRMultipliersFractional(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 2.5, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	trade := Trade{
 		Symbol: "BTC", Side: "buy", Quantity: 0.01, Price: 63500.0, Value: 635.0,
@@ -2579,10 +2579,10 @@ func TestFormatTradeDM_TieredTPATRRegime(t *testing.T) {
 		ID:       "hl-reg-btc",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
 			Params: map[string]interface{}{"use_defaults": true},
-		}},
+		},
 	}
 	trade := Trade{
 		Symbol:   "BTC",
@@ -2604,10 +2604,10 @@ func TestFormatTradeDM_TieredTPATRRegime(t *testing.T) {
 // (#665). SL was previously appended after the TP tiers.
 func TestFormatTradeDM_ExtrasOrder(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	trade := Trade{
 		Symbol:            "BTC",
@@ -2639,10 +2639,10 @@ func TestFormatTradeDM_ExtrasOrder(t *testing.T) {
 func TestFormatTradeDMPlain_IncludesOID(t *testing.T) {
 	pf := func(v float64) *float64 { return &v }
 	sc := StrategyConfig{
-		ID:              "hl-tatr-eth",
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-eth",
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	trade := Trade{
 		Symbol:            "ETH",
@@ -2672,10 +2672,10 @@ func TestFormatTradeDMPlain_IncludesOID(t *testing.T) {
 // close legs even when EntryATR is set and the strategy uses tiered_tp_atr (#561).
 func TestFormatTradeDM_CloseNoATR(t *testing.T) {
 	sc := StrategyConfig{
-		ID:              "hl-tatr-btc",
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		ID:            "hl-tatr-btc",
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	trade := Trade{
 		Symbol:   "BTC",

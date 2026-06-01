@@ -45,9 +45,9 @@ func TestAppendOpenCloseArgsOnlyWhenOptedIn(t *testing.T) {
 	// (see buildStrategyRefsArg), not as separate --open-strategy / --close-strategies
 	// flags. appendOpenCloseArgs only adds position-context flags when they're set.
 	sc := StrategyConfig{
-		Args:            []string{"sma_crossover", "BTC/USDT", "1h"},
-		OpenStrategy:    StrategyRef{Name: "momentum"},
-		CloseStrategies: []StrategyRef{{Name: "rsi"}, {Name: "macd"}},
+		Args:          []string{"sma_crossover", "BTC/USDT", "1h"},
+		OpenStrategy:  StrategyRef{Name: "momentum"},
+		CloseStrategy: &StrategyRef{Name: "rsi"},
 	}
 	got := appendOpenCloseArgs(sc.Args, sc, PositionCtx{Side: "long"})
 	want := []string{
@@ -80,12 +80,9 @@ func TestBuildStrategyRefsArg(t *testing.T) {
 	sc := StrategyConfig{
 		Args:         []string{"sma_crossover", "BTC/USDT", "1h"},
 		OpenStrategy: StrategyRef{Name: "momentum", Params: map[string]interface{}{"rsi_period": 14}},
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr", Params: map[string]interface{}{"tiers": []interface{}{
-				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
-			}}},
-			{Name: "tp_at_pct"},
-		},
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{"tiers": []interface{}{
+			map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
+		}}},
 	}
 	got, err = buildStrategyRefsArg(sc)
 	if err != nil {
@@ -108,8 +105,9 @@ func TestBuildStrategyRefsArg(t *testing.T) {
 	if got, want := payload.Open.Params["rsi_period"], 14.0; got != want {
 		t.Errorf("open.params[rsi_period] = %v, want %v", got, want)
 	}
-	if len(payload.Closes) != 2 {
-		t.Fatalf("closes length = %d, want 2", len(payload.Closes))
+	// #842: the wire carries the single close as a length-1 "closes" list.
+	if len(payload.Closes) != 1 {
+		t.Fatalf("closes length = %d, want 1 (single close)", len(payload.Closes))
 	}
 	if payload.Closes[0].Name != "tiered_tp_atr" {
 		t.Errorf("closes[0].name = %q, want tiered_tp_atr", payload.Closes[0].Name)
@@ -118,18 +116,12 @@ func TestBuildStrategyRefsArg(t *testing.T) {
 	if !ok || len(tiers) != 1 {
 		t.Errorf("closes[0].params[tiers] = %v, want length 1", payload.Closes[0].Params["tiers"])
 	}
-	if payload.Closes[1].Name != "tp_at_pct" {
-		t.Errorf("closes[1].name = %q, want tp_at_pct", payload.Closes[1].Name)
-	}
-	if len(payload.Closes[1].Params) != 0 {
-		t.Errorf("closes[1].params = %v, want empty", payload.Closes[1].Params)
-	}
 }
 
 func TestAppendOpenCloseArgsPositionCtx(t *testing.T) {
 	sc := StrategyConfig{
-		Args:            []string{"triple_ema", "ETH", "1h"},
-		CloseStrategies: []StrategyRef{{Name: "tp_at_pct"}},
+		Args:          []string{"triple_ema", "ETH", "1h"},
+		CloseStrategy: &StrategyRef{Name: "tp_at_pct"},
 	}
 	tests := []struct {
 		name string

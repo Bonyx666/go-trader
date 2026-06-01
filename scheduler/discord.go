@@ -1056,7 +1056,7 @@ func positionMargin(qty, avgCost, leverage float64) float64 {
 // Used for inspect-style questions and the on-chain-TP placement gate in
 // hyperliquidPlacesOnChainTPs.
 func strategyUsesTieredTPATRClose(sc StrategyConfig) bool {
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		if isTieredTPATRCloseName(ref.Name) {
 			return true
 		}

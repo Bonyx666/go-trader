@@ -306,7 +306,8 @@ type StrategyConfig struct {
 	Script                  string                   `json:"script"`
 	Args                    []string                 `json:"args"`
 	OpenStrategy            StrategyRef              `json:"open_strategy"`                       // entry strategy ref (name + params). Migrated from legacy string-typed open_strategy / args[0] in v13 (#640)
-	CloseStrategies         []StrategyRef            `json:"close_strategies,omitempty"`          // exit strategy refs (name + params); max close_fraction wins (#480). Migrated from legacy []string in v13 (#640)
+	CloseStrategy           *StrategyRef             `json:"close_strategy,omitempty"`            // single exit strategy ref (name + params). Collapsed from the legacy close_strategies array in #842 — one profit-taking close owns the exit ladder; risk backstops live at strategy level. Nil = open-as-close. UnmarshalJSON still reads the legacy close_strategies array for back-compat (len 1 lifted here, len>1 rejected at validation with the strategy id).
+	closeStrategiesLegacy   []StrategyRef            `json:"-"`                                   // #842: legacy close_strategies array captured by UnmarshalJSON for back-compat; only used to reject len>1 during validation. Never marshaled.
 	AllowedRegimes          []string                 `json:"allowed_regimes,omitempty"`           // gate entries: skip signal when current regime not in this list; empty = allow all (#482)
 	RegimeGateWindow        string                   `json:"regime_gate_window,omitempty"`        // window key for allowed_regimes gate; "" or "default" = legacy single lookback (#792)
 	RegimeATRWindow         string                   `json:"regime_atr_window,omitempty"`         // window key for *_atr_regime resolution (#792)
@@ -335,6 +336,61 @@ type StrategyConfig struct {
 	ThetaHarvest            *ThetaHarvestConfig      `json:"theta_harvest,omitempty"`
 	FuturesConfig           *FuturesConfig           `json:"futures,omitempty"`
 	RegimeDirectionalPolicy *RegimeDirectionalPolicy `json:"regime_directional_policy,omitempty"` // HL perps only: regime-aware override for Direction + InvertSignal. When set, runHyperliquidCheck resolves the effective pair per-cycle from the current regime (when flat) or pos.Regime (when an open position is held — "hold until natural exit" semantics). Static Direction/InvertSignal are the base; the policy overrides per regime. Requires regime detection enabled at top-level cfg.Regime. (#779)
+}
+
+// UnmarshalJSON parses a StrategyConfig while accepting both the canonical
+// single `close_strategy` ref and the legacy `close_strategies` array (#842).
+// The array model (max close_fraction wins across N peers) was collapsed to a
+// single profit-taking close: a length-1 legacy array is lifted into
+// CloseStrategy; a length>1 array is retained in closeStrategiesLegacy so
+// validateConfig can reject it with the strategy id (the operator must pick one
+// close and move risk backstops to the strategy level). An explicit
+// `close_strategy` always wins over a legacy array if both are somehow present.
+func (sc *StrategyConfig) UnmarshalJSON(data []byte) error {
+	type alias StrategyConfig // shed UnmarshalJSON to avoid infinite recursion
+	aux := struct {
+		*alias
+		LegacyCloses []StrategyRef `json:"close_strategies"`
+	}{alias: (*alias)(sc)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if sc.CloseStrategy == nil && len(aux.LegacyCloses) > 0 {
+		sc.closeStrategiesLegacy = aux.LegacyCloses
+		if len(aux.LegacyCloses) == 1 {
+			ref := aux.LegacyCloses[0]
+			sc.CloseStrategy = &ref
+		}
+	}
+	return nil
+}
+
+// closeRefs returns the strategy's close evaluator as a 0-or-1 element slice.
+// Post-#842 a strategy has at most one close, but many call sites still scan
+// "the close refs" looking for a tiered-TP evaluator; this adapter lets those
+// loops stay correct against the single-close model without special-casing nil.
+func (sc StrategyConfig) closeRefs() []StrategyRef {
+	if sc.CloseStrategy == nil {
+		return nil
+	}
+	return []StrategyRef{*sc.CloseStrategy}
+}
+
+// cloneCloseStrategyRef deep-copies a close ref (including its params map) so
+// callers that hand a StrategyConfig to the UI/reload layers don't alias the
+// live config's pointer/map. Returns nil for a nil ref (open-as-close).
+func cloneCloseStrategyRef(ref *StrategyRef) *StrategyRef {
+	if ref == nil {
+		return nil
+	}
+	out := StrategyRef{Name: ref.Name}
+	if len(ref.Params) > 0 {
+		out.Params = make(map[string]interface{}, len(ref.Params))
+		for k, v := range ref.Params {
+			out.Params[k] = v
+		}
+	}
+	return &out
 }
 
 // EffectiveSizingLeverage returns the notional-sizing multiplier for perps.
@@ -849,8 +905,8 @@ func loadConfig(path string, skipLiveCredentialChecks bool) (*Config, error) {
 		if sc.MarginMode == "" {
 			sc.MarginMode = "isolated"
 		}
-		if len(sc.CloseStrategies) == 0 {
-			sc.CloseStrategies = []StrategyRef{{Name: "tiered_tp_atr_live"}}
+		if sc.CloseStrategy == nil {
+			sc.CloseStrategy = &StrategyRef{Name: "tiered_tp_atr_live"}
 		}
 		// #691/#696: type=manual gets its own SL default (1.5× ATR by default,
 		// overridable via manual_defaults.stop_loss_atr_mult) so non-manual
@@ -868,21 +924,15 @@ func loadConfig(path string, skipLiveCredentialChecks bool) (*Config, error) {
 				sc.StopLossATRMult = &defaultMult
 			}
 		}
-		// #696: Default TP tiers for manual strategies onto the matching close
-		// ref, overridable via manual_defaults.tp_tiers. Only the tiered_tp_atr*
-		// close evaluators consume `tiers`; if the operator overrode
-		// CloseStrategies to something else, leave it alone.
-		for j := range sc.CloseStrategies {
-			cs := &sc.CloseStrategies[j]
-			if !isTieredTPATRCloseName(cs.Name) {
-				continue
-			}
-			if cs.Name == "tiered_tp_atr_regime" || cs.Name == "tiered_tp_atr_live_regime" {
-				// Regime-aware variants resolve their own tier list from the
-				// trend_regime block / use_defaults shortcut — manual_defaults
-				// tier seeding doesn't apply.
-				continue
-			}
+		// #696: Default TP tiers for manual strategies onto the close ref,
+		// overridable via manual_defaults.tp_tiers. Only the tiered_tp_atr*
+		// close evaluators consume `tp_tiers`; if the operator overrode
+		// close_strategy to something else, leave it alone.
+		if cs := sc.CloseStrategy; cs != nil && isTieredTPATRCloseName(cs.Name) &&
+			cs.Name != "tiered_tp_atr_regime" && cs.Name != "tiered_tp_atr_live_regime" {
+			// Regime-aware variants resolve their own tier list from the
+			// trend_regime block / use_defaults shortcut — manual_defaults
+			// tier seeding doesn't apply.
 			if cs.Params == nil {
 				cs.Params = map[string]interface{}{}
 			}
@@ -1206,20 +1256,31 @@ func validateConfig(cfg *Config, skipLiveCredentialChecks bool) error {
 		if sc.Type != "spot" && sc.Type != "options" && sc.Type != "perps" && sc.Type != "futures" && sc.Type != "manual" {
 			errs = append(errs, fmt.Sprintf("%s: type must be \"spot\", \"options\", \"perps\", \"futures\", or \"manual\", got %q", prefix, sc.Type))
 		}
-		// Options strategies don't compose close evaluators yet. open_strategy
+		// #842: a strategy has at most one close. A legacy close_strategies
+		// array with >1 entry no longer composes via max close_fraction —
+		// reject it so the operator picks one profit-taking close and moves any
+		// risk backstops to the strategy level.
+		if len(sc.closeStrategiesLegacy) > 1 {
+			names := make([]string, 0, len(sc.closeStrategiesLegacy))
+			for _, ref := range sc.closeStrategiesLegacy {
+				names = append(names, ref.Name)
+			}
+			errs = append(errs, fmt.Sprintf("%s: close_strategies has %d entries %v — the array model was collapsed to a single close_strategy (#842); keep one profit-taking close and move risk backstops (hard caps, time stops) to the strategy level", prefix, len(names), names))
+		}
+		// Options strategies don't compose a close evaluator yet. open_strategy
 		// is allowed as canonical metadata (post-v13 it mirrors args[0]); only
-		// close_strategies remain rejected here.
-		if len(sc.CloseStrategies) > 0 && sc.Type == "options" {
-			errs = append(errs, fmt.Sprintf("%s: close_strategies are supported for spot, perps, and futures strategies only", prefix))
+		// close_strategy remains rejected here.
+		if sc.CloseStrategy != nil && sc.Type == "options" {
+			errs = append(errs, fmt.Sprintf("%s: close_strategy is supported for spot, perps, and futures strategies only", prefix))
 		}
 		if sc.OpenStrategy.Name != "" {
 			if err := validateStrategyConceptName(sc.OpenStrategy.Name); err != nil {
 				errs = append(errs, fmt.Sprintf("%s: open_strategy %v", prefix, err))
 			}
 		}
-		for j, ref := range sc.CloseStrategies {
-			if err := validateStrategyConceptName(ref.Name); err != nil {
-				errs = append(errs, fmt.Sprintf("%s: close_strategies[%d] %v", prefix, j, err))
+		if sc.CloseStrategy != nil {
+			if err := validateStrategyConceptName(sc.CloseStrategy.Name); err != nil {
+				errs = append(errs, fmt.Sprintf("%s: close_strategy %v", prefix, err))
 			}
 		}
 

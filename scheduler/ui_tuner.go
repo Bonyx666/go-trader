@@ -28,7 +28,7 @@ type UIStrategyConfigResponse struct {
 	Symbol               string                 `json:"symbol"`
 	Timeframe            string                 `json:"timeframe"`
 	OpenStrategy         StrategyRef            `json:"open_strategy"`
-	CloseStrategies      []StrategyRef          `json:"close_strategies,omitempty"`
+	CloseStrategy        *StrategyRef           `json:"close_strategy,omitempty"`
 	IntervalSeconds      int                    `json:"interval_seconds,omitempty"`
 	Direction            string                 `json:"direction,omitempty"`
 	InvertSignal         bool                   `json:"invert_signal,omitempty"`
@@ -353,7 +353,7 @@ func buildUIStrategyConfig(sc StrategyConfig, defaults map[string]interface{}, _
 		Symbol:               strategyDisplaySymbol(sc),
 		Timeframe:            strategyDisplayTimeframe(sc),
 		OpenStrategy:         openRef,
-		CloseStrategies:      append([]StrategyRef(nil), sc.CloseStrategies...),
+		CloseStrategy:        cloneCloseStrategyRef(sc.CloseStrategy),
 		IntervalSeconds:      sc.IntervalSeconds,
 		Direction:            EffectiveDirection(sc),
 		InvertSignal:         sc.InvertSignal,
@@ -564,7 +564,7 @@ func simulateConfigPayload(sc StrategyConfig, regime *RegimeConfig) map[string]i
 		"timeframe":          strategyDisplayTimeframe(sc),
 		"strategy":           effectiveOpenStrategy(sc),
 		"open_strategy":      sc.OpenStrategy,
-		"close_strategies":   sc.CloseStrategies,
+		"close_strategy":     sc.CloseStrategy,
 		"htf_filter":         sc.HTFFilter,
 		"allowed_regimes":    sc.AllowedRegimes,
 		"initial_capital":    sc.InitialCapital,

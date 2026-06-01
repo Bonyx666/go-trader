@@ -88,7 +88,7 @@ The wizard covers assets, strategy groups, paper/live mode, per-strategy capital
 Manual config rules:
 
 - Strategy entries need `id`, `type`, `script`, `args`, `capital`, `max_drawdown_pct`, `interval_seconds`.
-- `open_strategy` and each entry in `close_strategies` are objects of shape `{"name": "<id>", "params": {...}}` (#640/#642). Per-evaluator params (e.g. `tiered_tp_atr`'s `tp_tiers`) live on the matching close ref, not on the strategy. Pre-v13 configs with a flat `params` map and string-typed `open_strategy`/`close_strategies` are migrated automatically on next start (synchronous, no DM); flat keys split per close-strategy ownership and everything else stays on the open ref.
+- `open_strategy` and `close_strategy` are objects of shape `{"name": "<id>", "params": {...}}` (#640/#642; the close collapsed from an array to a single ref in #842 — a legacy `close_strategies` array of length ≤1 is still read, len>1 is rejected). Per-evaluator params (e.g. `tiered_tp_atr`'s `tp_tiers`) live on the close ref, not on the strategy. Pre-v13 configs with a flat `params` map and string-typed `open_strategy`/`close_strategies` are migrated automatically on next start (synchronous, no DM); flat keys split per close-strategy ownership and everything else stays on the open ref.
 - **#841 canonical close keys:** the tier list is `tp_tiers` and each tier is `{"atr_multiple"|"profit_pct": N, "close_fraction": 0..1, "sl_after"?: {...}}`. Legacy `tiers` / `atr` / `multiple` / `fraction` keys are still read for one deprecation window (a `[DEPRECATED]` warning is logged), but write the canonical names.
 - **#841 unified per-regime close block** (`tiered_tp_atr_regime` / `tiered_tp_atr_live_regime`): instead of a tier-keyed list, give the close ref a top-level `trend_regime` where each label owns its own plan — its stop loss and tier ladder co-located, varying freely per regime:
   ```json
@@ -244,6 +244,7 @@ When in doubt, treat as runtime default and prompt. Regenerate from `git log --o
 - **v13 → v14 direction enum (#658)** — `allow_shorts: false` rewritten to `direction: "long"`, `allow_shorts: true` rewritten to `direction: "both"`; legacy key dropped. Default for new strategies is `"long"`. Use `"short"` to run any bidirectional strategy as a dedicated bear-only instrument (e.g. `ichimoku_cloud` + `direction: "short"` + `allowed_regimes: ["trending_down"]`) without writing a new strategy module. Migration is silent — no operator prompt needed.
 
 **Runtime default**
+- **Single `close_strategy` per strategy (#842)** — the `close_strategies` array (which ran every entry each cycle with "max `close_fraction` wins") collapsed to one `close_strategy` ref; one profit-taking close owns the exit and risk backstops belong at the strategy level. Configs may keep writing the legacy `close_strategies` array — a length-1 array is read as the single close; a length>1 array is rejected at load with the strategy id (collapse it). No on-disk migration or `config_version` bump yet (deferred to #848). `close_strategy` is the canonical key; `close_strategies` still parses. Internals: `StrategyConfig.CloseStrategy *StrategyRef`; the Go↔Python `--strategy-refs` wire still carries a length-≤1 `"closes"` list; backtest/simulate read `close_strategy` with legacy fallback.
 - HL stop-loss auto-derive from `max_drawdown_pct` (#493); margin mode default `isolated` (#486)
 - Peer normalization of omitted stop/trailing fields (#494/#507; superseded by #601 — peers now place per-strategy sized stops)
 - Shared-coin CB drain clears pending **without** on-chain close when peers share the coin (#515) — operator must flatten manually
@@ -599,7 +600,7 @@ uv run --no-sync python backtest/run_backtest.py --strategy momentum --timeframe
 uv run --no-sync python backtest/run_backtest.py --strategy momentum --symbol BTC/USDT --timeframe 1h --mode optimize
 uv run --no-sync python backtest/run_backtest.py --strategy momentum --symbol BTC/USDT --timeframe 1h --since 90
 
-# Close-strategy registry (#535/#641) — repeatable; max close_fraction wins.
+# Close-strategy registry (#535/#641) — single close per strategy (#842); --close-strategy sets it.
 # --close-strategy accepts both bare names and JSON refs ({"name","params"}).
 # --close-params is removed — fold params into the JSON ref.
 uv run --no-sync python backtest/run_backtest.py --strategy momentum --symbol BTC/USDT --timeframe 1h \
@@ -675,7 +676,7 @@ Per-strategy:
 | Interval | `interval_seconds` | 0 uses global; auto-accelerates in DD warn band |
 | HTF filter | `htf_filter` | Skips counter-trend signals |
 | Open strategy params | `open_strategy.params` | Per-open overrides; no longer a flat top-level `params` map (#640). Migrated from legacy on first start |
-| Close strategy params | `close_strategies[i].params` | Per-close evaluator overrides (e.g. `tiered_tp_atr.tiers`); each ref carries its own params so they don't leak into the open strategy |
+| Close strategy params | `close_strategy.params` | Close evaluator overrides (e.g. `tiered_tp_atr.tp_tiers`); the ref carries its own params so they don't leak into the open strategy. (Legacy `close_strategies[i].params` array path still read.) |
 | Direction | `direction` | Perps gate: `"long"` (default), `"short"` (#656 — open shorts only), or `"both"` (bidirectional). Replaces legacy `allow_shorts`; v14 migration converts `false→"long"`, `true→"both"`. SIGHUP-aware when flat. |
 | Invert signal | `invert_signal` | HL perps/manual only. `true` flips BUY↔SELL on every non-zero signal; HOLD (0) never flipped. Allows inverse-trend use of any open strategy without a new Python module. Composes with `direction="short"` (opens short on raw-BUY, distinct from plain short-direction which opens on raw-SELL). SIGHUP-blocked while open. Default `false`. |
 | Regime directional policy | `regime_directional_policy` | HL perps only. Per-regime `direction`+`invert_signal` override that auto-switches long/short/inverse mode as market regime changes. Requires `regime.enabled=true`; all three canonical regime labels required. When flat, resolves from current regime; while a position is open, resolves from `pos.Regime` at open (hold-on-transition). Startup state-vs-config validation and `inspect` use the same effective-direction rules (#783). SIGHUP blocks shape changes while open. `base_direction`/`effective_direction` visible in `/status`. Backtester rejects (HL-live-only). |
@@ -690,7 +691,7 @@ Per-strategy:
 | Margin per trade | `margin_per_trade_usd` | Perps (opt-in) — `notional = min(margin_per_trade_usd, cash) × leverage`. Overrides `sizing_leverage`. SIGHUP-aware (#520). |
 | Margin mode | `margin_mode` | HL perps, `isolated` (default) or `cross`. Applied from flat. |
 | Open strategy | `open_strategy` | Override entry strategy name (else `args[0]`) |
-| Close strategies | `close_strategies` | Ordered list; max `close_fraction` wins |
+| Close strategy | `close_strategy` | Single exit ref `{name, params}` (#842 collapsed the array); legacy `close_strategies` array len ≤1 still read, len>1 rejected; nil → open-as-close |
 | Regime gate | `allowed_regimes` | Labels allowing entries (`trending_up`, `trending_down`, `ranging`); empty = allow all; needs `regime.enabled=true`; not on type=options |
 | Multi-window selectors | `regime_gate_window`, `regime_atr_window`, `regime_directional_window` | Require non-empty `regime.windows`. Route entry gate, regime-aware ATR/TP, and directional policy to different ADX horizons. Empty/`default` → legacy `regime.period`. Stamped labels persist in `pos.RegimeWindows` (#792). SIGHUP when flat; blocked while open. |
 | Theta harvest | `theta_harvest.*` | Options early-exit |

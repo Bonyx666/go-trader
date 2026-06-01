@@ -114,25 +114,22 @@ func TestResolveStopLossNonHLReturnsNA(t *testing.T) {
 	}
 }
 
-func TestResolveTPMatchesFirstTieredCloseRef(t *testing.T) {
+func TestResolveTPMatchesTieredCloseRef(t *testing.T) {
 	sc := StrategyConfig{
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{
-			{Name: "trailing_stop_atr"}, // unrelated
-			{Name: "tiered_tp_atr", Params: map[string]interface{}{
-				"tiers": []interface{}{
-					map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
-					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
-				},
-			}},
-		},
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
+			"tiers": []interface{}{
+				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
+				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
+			},
+		}},
 	}
 	res := resolveTP(sc, nil)
 	if !res.OK {
 		t.Fatal("expected TP resolution to succeed")
 	}
-	if res.CloseIndex != 1 || res.CloseName != "tiered_tp_atr" {
+	if res.CloseIndex != 0 || res.CloseName != "tiered_tp_atr" {
 		t.Errorf("index=%d name=%q", res.CloseIndex, res.CloseName)
 	}
 	if !strings.Contains(res.TiersFrom, "explicit") {
@@ -145,9 +142,9 @@ func TestResolveTPMatchesFirstTieredCloseRef(t *testing.T) {
 
 func TestResolveTPNoTieredCloseRefReturnsNotOK(t *testing.T) {
 	sc := StrategyConfig{
-		Platform:        "hyperliquid",
-		Type:            "perps",
-		CloseStrategies: []StrategyRef{{Name: "trailing_stop_atr"}},
+		Platform:      "hyperliquid",
+		Type:          "perps",
+		CloseStrategy: &StrategyRef{Name: "trailing_stop_atr"},
 	}
 	res := resolveTP(sc, nil)
 	if res.OK {
@@ -157,15 +154,13 @@ func TestResolveTPNoTieredCloseRefReturnsNotOK(t *testing.T) {
 
 func TestFormatStrategyInspectionShowsResolvedTPSource(t *testing.T) {
 	sc := StrategyConfig{
-		ID:           "hl-rmc-eth-live",
-		Type:         "perps",
-		Platform:     "hyperliquid",
-		Script:       "shared_scripts/check_hyperliquid.py",
-		Args:         []string{"range_mean_revert", "ETH", "1h"},
-		OpenStrategy: StrategyRef{Name: "range_mean_revert"},
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr"},
-		},
+		ID:             "hl-rmc-eth-live",
+		Type:           "perps",
+		Platform:       "hyperliquid",
+		Script:         "shared_scripts/check_hyperliquid.py",
+		Args:           []string{"range_mean_revert", "ETH", "1h"},
+		OpenStrategy:   StrategyRef{Name: "range_mean_revert"},
+		CloseStrategy:  &StrategyRef{Name: "tiered_tp_atr"},
 		Capital:        1000,
 		Leverage:       5,
 		SizingLeverage: 5,
@@ -176,7 +171,7 @@ func TestFormatStrategyInspectionShowsResolvedTPSource(t *testing.T) {
 	sc.StopLossATRMult = &mult
 	explicit := map[string]bool{
 		"id": true, "type": true, "platform": true, "script": true, "args": true,
-		"open_strategy": true, "close_strategies": true,
+		"open_strategy": true, "close_strategy": true,
 		"capital": true, "leverage": true, "sizing_leverage": true,
 		"margin_mode": true, "max_drawdown_pct": true, "stop_loss_atr_mult": true,
 	}
@@ -184,11 +179,11 @@ func TestFormatStrategyInspectionShowsResolvedTPSource(t *testing.T) {
 
 	for _, want := range []string{
 		"strategy hl-rmc-eth-live",
-		"close_strategies:    [tiered_tp_atr]",
+		"close_strategy:      [tiered_tp_atr]",
 		"stop_loss:",
 		"source:            stop_loss_atr_mult (explicit)",
 		"take_profit:",
-		"source:            close_strategies[0] tiered_tp_atr",
+		"source:            close_strategy tiered_tp_atr",
 		"tiers:             [1× ATR @ 50%, 2× ATR @ 100%]",
 		"default (canonical [1×@50%, 2×@100%])",
 	} {
@@ -242,7 +237,7 @@ func TestFormatStrategySummaryLineCompressesEverything(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		OpenStrategy:    StrategyRef{Name: "range_mean_revert"},
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr"},
 		StopLossATRMult: &mult,
 	}
 	line := formatStrategySummaryLine(sc, map[string]bool{"stop_loss_atr_mult": true})
@@ -250,7 +245,7 @@ func TestFormatStrategySummaryLineCompressesEverything(t *testing.T) {
 		"[config] hl-rmc-eth-live:",
 		"type=perps",
 		"open=range_mean_revert",
-		"close=[tiered_tp_atr]",
+		"close=tiered_tp_atr",
 		"sl=stop_loss_atr_mult (explicit)",
 		"tp=tiered_tp_atr[2-tier]",
 	} {
@@ -283,7 +278,7 @@ func TestBuildStrategyInspectionJSONStableShape(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		OpenStrategy:    StrategyRef{Name: "range_mean_revert"},
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr"},
 		Leverage:        5,
 		SizingLeverage:  5,
 		MarginMode:      "isolated",
@@ -291,7 +286,7 @@ func TestBuildStrategyInspectionJSONStableShape(t *testing.T) {
 		StopLossATRMult: &mult,
 	}
 	out := buildStrategyInspectionJSON(sc, map[string]bool{
-		"open_strategy": true, "close_strategies": true, "stop_loss_atr_mult": true,
+		"open_strategy": true, "close_strategy": true, "stop_loss_atr_mult": true,
 	}, &Config{IntervalSeconds: 600}, nil)
 
 	bs, err := json.Marshal(out)
@@ -353,14 +348,14 @@ func TestFormatStrategyInspectionRegimeTPUseDefaults(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		Script:          "shared_scripts/check_hyperliquid.py",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
 		Leverage:        3,
 		StopLossATRMult: &mult,
 		MaxDrawdownPct:  50,
 	}
 	explicit := map[string]bool{
 		"id": true, "type": true, "platform": true, "script": true,
-		"close_strategies": true, "leverage": true, "max_drawdown_pct": true,
+		"close_strategy": true, "leverage": true, "max_drawdown_pct": true,
 	}
 	out := formatStrategyInspection(sc, explicit, &Config{IntervalSeconds: 60}, nil)
 	if !strings.Contains(out, "tiered_tp_atr_regime tier[0]:") {
@@ -380,7 +375,7 @@ func TestFormatStrategySummaryLineRegimeTPTierCount(t *testing.T) {
 		ID:              "hl-reg-tp",
 		Type:            "perps",
 		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
 		StopLossATRMult: &mult,
 	}
 	line := formatStrategySummaryLine(sc, nil)

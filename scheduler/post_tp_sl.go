@@ -724,7 +724,7 @@ func parseStrategyTPSLAfterRulesForRegime(sc StrategyConfig, labels []string, re
 	var refParams map[string]interface{}
 	tieredName := ""
 	regimeUseDefaults := false
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if !isTieredTPATRCloseName(n) {
 			continue
@@ -929,7 +929,7 @@ func slAfterLabelsForRegimeTiers(raw interface{}, labels []string) []string {
 }
 
 func strategyUsesRegimeTieredTPATRClose(sc StrategyConfig) bool {
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if n == "tiered_tp_atr_regime" || n == "tiered_tp_atr_live_regime" {
 			return true
@@ -956,7 +956,7 @@ func validatePostTPStopLossRules(sc StrategyConfig) []string {
 func validatePostTPStopLossRulesWithLabels(sc StrategyConfig, labels []string) []string {
 	rules, errs := parseStrategyTPSLAfterRulesWithLabels(sc, labels)
 	out := append([]string(nil), errs...)
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if isTieredTPATRCloseName(n) {
 			continue

@@ -34,9 +34,9 @@ func TestComputeFallbackATR(t *testing.T) {
 
 func TestPlaceManualProtectionInline_NoTiers(t *testing.T) {
 	sc := StrategyConfig{
-		Type:            "manual",
-		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tp_at_pct"}}, // not tiered_tp_atr*
+		Type:          "manual",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tp_at_pct"}, // not tiered_tp_atr*
 	}
 	oids, warn, err := placeManualProtectionInline(sc, "long", 0.8, 2500, 12.5, 1.0, 0)
 	if err != nil {
@@ -62,11 +62,11 @@ func TestPlaceManualProtectionInline_TPErrorsSurface(t *testing.T) {
 	}
 
 	sc := StrategyConfig{
-		Type:            "manual",
-		Platform:        "hyperliquid",
-		Script:          "shared_scripts/check_hyperliquid.py",
-		Symbol:          "ETH",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		Type:          "manual",
+		Platform:      "hyperliquid",
+		Script:        "shared_scripts/check_hyperliquid.py",
+		Symbol:        "ETH",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"},
 	}
 	oids, warn, err := placeManualProtectionInline(sc, "long", 0.8, 2500, 12.5, 1.0, 0)
 	if err != nil {

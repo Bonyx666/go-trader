@@ -16,7 +16,7 @@ func TestKnownStrategyConfigKeysCoversCoreFields(t *testing.T) {
 	mustHave := []string{
 		"id", "type", "platform", "symbol", "timeframe",
 		"script", "args",
-		"open_strategy", "close_strategies", "allowed_regimes",
+		"open_strategy", "close_strategy", "close_strategies", "allowed_regimes",
 		"capital", "capital_pct", "initial_capital",
 		"max_drawdown_pct", "interval_seconds",
 		"htf_filter", "allow_shorts", "direction",
@@ -53,20 +53,23 @@ func TestValidateStrategyJSONKeysFlagsInventedTPField(t *testing.T) {
 	if !strings.Contains(errs[0], `strategy[hl-momentum-btc]: unknown field "take_profit_atr_mult"`) {
 		t.Errorf("error missing strategy id + field name: %q", errs[0])
 	}
-	if !strings.Contains(errs[0], "close_strategies") {
-		t.Errorf("error missing TP-field hint pointing operator to close_strategies: %q", errs[0])
+	if !strings.Contains(errs[0], "close_strategy") {
+		t.Errorf("error missing TP-field hint pointing operator to close_strategy: %q", errs[0])
 	}
 }
 
-func TestValidateStrategyJSONKeysHintsLegacyCloseStrategy(t *testing.T) {
+// #842: close_strategy is the canonical key and close_strategies is the
+// accepted legacy spelling (UnmarshalJSON still reads the array) — neither must
+// be flagged as an unknown field.
+func TestValidateStrategyJSONKeysAcceptsBothCloseSpellings(t *testing.T) {
 	raw := []byte(`{
 		"strategies": [
-			{"id": "s1", "type": "spot", "script": "x.py", "args": [], "close_strategy": "tiered_tp_atr"}
+			{"id": "s1", "type": "spot", "script": "x.py", "args": [], "close_strategy": {"name": "tiered_tp_atr"}},
+			{"id": "s2", "type": "spot", "script": "x.py", "args": [], "close_strategies": [{"name": "tiered_tp_atr"}]}
 		]
 	}`)
-	errs := validateStrategyJSONKeys(raw)
-	if len(errs) != 1 || !strings.Contains(errs[0], "close_strategies (array of refs)") {
-		t.Fatalf("want legacy close_strategy hint, got %v", errs)
+	if errs := validateStrategyJSONKeys(raw); len(errs) != 0 {
+		t.Fatalf("want no unknown-field errors for either close spelling, got %v", errs)
 	}
 }
 

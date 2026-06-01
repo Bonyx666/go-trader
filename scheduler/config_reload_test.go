@@ -231,7 +231,7 @@ func TestApplyHotReloadConfigAllowsOpenCloseStrategyChanges(t *testing.T) {
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "s1", Type: "spot", Platform: "binanceus", Script: "x.py",
 		Args: []string{"triple_ema", "BTC/USDT", "1h"}, Capital: 100, MaxDrawdownPct: 10,
-		OpenStrategy: StrategyRef{Name: "triple_ema"}, CloseStrategies: []StrategyRef{{Name: "tp_at_pct"}},
+		OpenStrategy: StrategyRef{Name: "triple_ema"}, CloseStrategy: &StrategyRef{Name: "tp_at_pct"},
 	}})
 
 	changes, err := applyHotReloadConfig(cfg, next, NewAppState(), nil, nil)
@@ -241,7 +241,7 @@ func TestApplyHotReloadConfigAllowsOpenCloseStrategyChanges(t *testing.T) {
 	joined := strings.Join(changes, "\n")
 	for _, want := range []string{
 		"strategy[s1].open_strategy:",
-		"strategy[s1].close_strategies:",
+		"strategy[s1].close_strategy:",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("changes missing %q:\n%s", want, joined)
@@ -250,8 +250,8 @@ func TestApplyHotReloadConfigAllowsOpenCloseStrategyChanges(t *testing.T) {
 	if cfg.Strategies[0].OpenStrategy.Name != "triple_ema" {
 		t.Fatalf("OpenStrategy.Name = %q, want triple_ema", cfg.Strategies[0].OpenStrategy.Name)
 	}
-	if len(cfg.Strategies[0].CloseStrategies) != 1 || cfg.Strategies[0].CloseStrategies[0].Name != "tp_at_pct" {
-		t.Fatalf("CloseStrategies = %#v, want [tp_at_pct]", cfg.Strategies[0].CloseStrategies)
+	if cfg.Strategies[0].CloseStrategy == nil || cfg.Strategies[0].CloseStrategy.Name != "tp_at_pct" {
+		t.Fatalf("CloseStrategy = %#v, want tp_at_pct", cfg.Strategies[0].CloseStrategy)
 	}
 }
 
@@ -510,7 +510,7 @@ func TestApplyHotReloadConfigRejectsDirectionChangeWithOpenPerpsPosition(t *test
 // tier (post-TP machinery + trailing walker for trail_from_here) without the
 // validation the open respected.
 func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
-	tieredOpen := []StrategyRef{{
+	tieredOpen := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"tiers": []interface{}{
@@ -518,8 +518,8 @@ func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
 		},
-	}}
-	tieredWithSLAfter := []StrategyRef{{
+	}
+	tieredWithSLAfter := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
@@ -528,19 +528,19 @@ func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
 		},
-	}}
+	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tieredOpen,
+		CloseStrategy: tieredOpen,
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tieredWithSLAfter,
+		CloseStrategy: tieredWithSLAfter,
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -559,15 +559,15 @@ func TestApplyHotReloadConfigRejectsSLAfterAddWithOpenPosition(t *testing.T) {
 
 // #716 item 1 — sl_after rule changes are allowed when the strategy is flat.
 func TestApplyHotReloadConfigAllowsSLAfterAddWhenFlat(t *testing.T) {
-	tieredOpen := []StrategyRef{{
+	tieredOpen := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
-	tieredWithSLAfter := []StrategyRef{{
+	}
+	tieredWithSLAfter := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
@@ -575,19 +575,19 @@ func TestApplyHotReloadConfigAllowsSLAfterAddWhenFlat(t *testing.T) {
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
+	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tieredOpen,
+		CloseStrategy: tieredOpen,
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tieredWithSLAfter,
+		CloseStrategy: tieredWithSLAfter,
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Cash: 1000, Positions: map[string]*Position{}},
@@ -601,7 +601,7 @@ func TestApplyHotReloadConfigAllowsSLAfterAddWhenFlat(t *testing.T) {
 // #716 item 1 — switching from breakeven to trail_from_here mid-position is
 // the highest-risk transition (engages trailing walker without open validation).
 func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing.T) {
-	tierWithBreakeven := []StrategyRef{{
+	tierWithBreakeven := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": "breakeven",
@@ -609,8 +609,8 @@ func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
-	tierWithTrail := []StrategyRef{{
+	}
+	tierWithTrail := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{
@@ -621,19 +621,19 @@ func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
+	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierWithBreakeven,
+		CloseStrategy: tierWithBreakeven,
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierWithTrail,
+		CloseStrategy: tierWithTrail,
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -657,7 +657,7 @@ func TestApplyHotReloadConfigRejectsSLAfterModeChangeWithOpenPosition(t *testing
 // picks up the new SLAfterRule.Equal contract (which compares regime blocks
 // via RegimeATRBlock.EqualForReload).
 func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *testing.T) {
-	tierScalar := []StrategyRef{{
+	tierScalar := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{"atr_mult": 0.25},
@@ -665,8 +665,8 @@ func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *tes
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
-	tierRegime := []StrategyRef{{
+	}
+	tierRegime := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{
@@ -680,19 +680,19 @@ func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *tes
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
+	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierScalar,
+		CloseStrategy: tierScalar,
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierRegime,
+		CloseStrategy: tierRegime,
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -713,8 +713,8 @@ func TestApplyHotReloadConfigRejectsSLAfterScalarToRegimeWithOpenPosition(t *tes
 // numbers) is also a shape change for hot-reload purposes — the resting SL was
 // armed against the old value at open.
 func TestApplyHotReloadConfigRejectsSLAfterRegimeValueChangeWithOpenPosition(t *testing.T) {
-	makeRef := func(ranging float64) []StrategyRef {
-		return []StrategyRef{{
+	makeRef := func(ranging float64) *StrategyRef {
+		return &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"sl_after": map[string]interface{}{
@@ -728,20 +728,20 @@ func TestApplyHotReloadConfigRejectsSLAfterRegimeValueChangeWithOpenPosition(t *
 					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 				},
 			},
-		}}
+		}
 	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(0.0),
+		CloseStrategy: makeRef(0.0),
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(-0.5),
+		CloseStrategy: makeRef(-0.5),
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -762,7 +762,7 @@ func TestApplyHotReloadConfigRejectsSLAfterRegimeValueChangeWithOpenPosition(t *
 // Guards against false-positive blocks once SLAfterRule.Equal handles regime
 // blocks via RegimeATRBlock.EqualForReload.
 func TestApplyHotReloadConfigAllowsSLAfterRegimeIdentical(t *testing.T) {
-	tierRegime := []StrategyRef{{
+	tierRegime := &StrategyRef{
 		Name: "tiered_tp_atr",
 		Params: map[string]interface{}{
 			"sl_after": map[string]interface{}{
@@ -776,19 +776,19 @@ func TestApplyHotReloadConfigAllowsSLAfterRegimeIdentical(t *testing.T) {
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
 			},
 		},
-	}}
+	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierRegime,
+		CloseStrategy: tierRegime,
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: tierRegime,
+		CloseStrategy: tierRegime,
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -802,8 +802,8 @@ func TestApplyHotReloadConfigAllowsSLAfterRegimeIdentical(t *testing.T) {
 }
 
 func TestApplyHotReloadConfigRejectsRegimeTierMultipleChangeWithTPATRFraction(t *testing.T) {
-	makeRef := func(rangingATR float64) []StrategyRef {
-		return []StrategyRef{{
+	makeRef := func(rangingATR float64) *StrategyRef {
+		return &StrategyRef{
 			Name: "tiered_tp_atr_regime",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -828,20 +828,20 @@ func TestApplyHotReloadConfigRejectsRegimeTierMultipleChangeWithTPATRFraction(t 
 					},
 				},
 			},
-		}}
+		}
 	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(1.5),
+		CloseStrategy: makeRef(1.5),
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(2.5),
+		CloseStrategy: makeRef(2.5),
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{
@@ -859,8 +859,8 @@ func TestApplyHotReloadConfigRejectsRegimeTierMultipleChangeWithTPATRFraction(t 
 }
 
 func TestApplyHotReloadConfigAllowsRegimeTierMultipleChangeWithoutSLAfter(t *testing.T) {
-	makeRef := func(rangingATR float64) []StrategyRef {
-		return []StrategyRef{{
+	makeRef := func(rangingATR float64) *StrategyRef {
+		return &StrategyRef{
 			Name: "tiered_tp_atr_regime",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -882,20 +882,20 @@ func TestApplyHotReloadConfigAllowsRegimeTierMultipleChangeWithoutSLAfter(t *tes
 					},
 				},
 			},
-		}}
+		}
 	}
 	slMult := 1.5
 	cfg := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(1.5),
+		CloseStrategy: makeRef(1.5),
 	}})
 	next := minimalReloadConfig([]StrategyConfig{{
 		ID: "hl-eth", Type: "perps", Platform: "hyperliquid", Script: "x.py",
 		Args: []string{"a", "ETH", "1h"}, Capital: 1000, MaxDrawdownPct: 10,
 		Leverage: 5, MarginMode: "isolated", StopLossATRMult: &slMult,
-		CloseStrategies: makeRef(2.5),
+		CloseStrategy: makeRef(2.5),
 	}})
 	state := &AppState{Strategies: map[string]*StrategyState{
 		"hl-eth": {ID: "hl-eth", Positions: map[string]*Position{

@@ -1096,17 +1096,19 @@ func TestLoadConfigMigratesV12EndToEnd(t *testing.T) {
 	if _, leaked := sc.OpenStrategy.Params["tiers"]; leaked {
 		t.Error("OpenStrategy.Params still contains tiers — the original #640 bug")
 	}
-	// Close ref: tiers landed here.
-	if len(sc.CloseStrategies) != 1 {
-		t.Fatalf("len(CloseStrategies) = %d, want 1", len(sc.CloseStrategies))
+	// Close ref: tiers landed here. The v13 migration writes a single-element
+	// close_strategies array, which UnmarshalJSON lifts to the single
+	// close_strategy ref (#842).
+	if sc.CloseStrategy == nil {
+		t.Fatalf("CloseStrategy = nil, want a single tiered_tp_atr ref")
 	}
-	close0 := sc.CloseStrategies[0]
+	close0 := *sc.CloseStrategy
 	if close0.Name != "tiered_tp_atr" {
-		t.Errorf("CloseStrategies[0].Name = %q, want tiered_tp_atr", close0.Name)
+		t.Errorf("CloseStrategy.Name = %q, want tiered_tp_atr", close0.Name)
 	}
 	tiers, ok := close0.Params["tiers"].([]interface{})
 	if !ok || len(tiers) != 2 {
-		t.Fatalf("CloseStrategies[0].Params[tiers] = %v, want 2-element slice", close0.Params["tiers"])
+		t.Fatalf("CloseStrategy.Params[tiers] = %v, want 2-element slice", close0.Params["tiers"])
 	}
 
 	// End-to-end check: tiers reach buildHyperliquidProtectionPlan via the

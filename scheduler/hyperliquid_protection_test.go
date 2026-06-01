@@ -16,7 +16,7 @@ func TestBuildHyperliquidProtectionPlanUsesDefaultTieredATR(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &mult,
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 	}
 	pos := &Position{
 		Symbol:   "ETH",
@@ -48,7 +48,7 @@ func TestBuildHyperliquidProtectionPlanManualStrategy(t *testing.T) {
 		ID:              "hl-manual-eth",
 		Type:            "manual",
 		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 		StopLossATRMult: &mult,
 	}
 	pos := &Position{
@@ -180,89 +180,84 @@ func TestApplyHyperliquidProtectionSyncStampsTPArmedTiers(t *testing.T) {
 	})
 }
 
-func TestFilterCloseStrategiesForHLOnChainProtection(t *testing.T) {
+// #842: the close array collapsed to a single close ref. On HL live, a tiered
+// ATR close that also places on-chain TPs is dropped from the Python check
+// (the ladder is placed on-chain); non-tiered or paper closes are kept.
+func TestStrategyConfigWithOnChainProtectionFilter(t *testing.T) {
 	mult := 1.0
 	hlLiveArgs := []string{"bollinger_bands", "ETH", "30m", "--mode=live"}
 	hlPaperArgs := []string{"bollinger_bands", "ETH", "30m", "--mode=paper"}
 	cases := []struct {
-		name     string
-		sc       StrategyConfig
-		expected []string
+		name    string
+		sc      StrategyConfig
+		dropped bool // close ref nil'd after filter
 	}{
 		{
-			name: "tiered_tp_atr_live filtered when TP plan emitted",
+			name: "tiered_tp_atr_live live → dropped (placed on-chain)",
 			sc: StrategyConfig{
-				Args:            hlLiveArgs,
-				Type:            "perps",
-				Platform:        "hyperliquid",
+				Args: hlLiveArgs, Type: "perps", Platform: "hyperliquid",
 				StopLossATRMult: &mult,
-				CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}, {Name: "tp_at_pct"}},
+				CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 			},
-			expected: []string{"tp_at_pct"},
+			dropped: true,
 		},
 		{
-			name: "manual tiered_tp_atr_live filtered when TP plan emitted",
+			name: "manual tiered_tp_atr_live live → dropped",
 			sc: StrategyConfig{
-				Args:            hlLiveArgs,
-				Type:            "manual",
-				Platform:        "hyperliquid",
+				Args: hlLiveArgs, Type: "manual", Platform: "hyperliquid",
 				StopLossATRMult: &mult,
-				CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}, {Name: "tp_at_pct"}},
+				CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 			},
-			expected: []string{"tp_at_pct"},
+			dropped: true,
 		},
 		{
-			name: "no filter when no on-chain TPs (no tiered close strategy)",
+			name: "tiered_tp_atr live → dropped",
 			sc: StrategyConfig{
-				Type:            "perps",
-				Platform:        "hyperliquid",
+				Args: hlLiveArgs, Type: "perps", Platform: "hyperliquid",
 				StopLossATRMult: &mult,
-				CloseStrategies: []StrategyRef{{Name: "tp_at_pct"}},
+				CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr"},
 			},
-			expected: []string{"tp_at_pct"},
+			dropped: true,
 		},
 		{
-			name: "non-perps untouched",
+			name: "non-tiered close (tp_at_pct) → kept",
 			sc: StrategyConfig{
-				Type:            "spot",
-				Platform:        "hyperliquid",
-				CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+				Type: "perps", Platform: "hyperliquid",
+				StopLossATRMult: &mult,
+				CloseStrategy:   &StrategyRef{Name: "tp_at_pct"},
 			},
-			expected: []string{"tiered_tp_atr_live"},
+			dropped: false,
 		},
 		{
-			name: "tiered_tp_atr also filtered",
+			name: "non-perps (spot) → kept",
 			sc: StrategyConfig{
-				Args:            hlLiveArgs,
-				Type:            "perps",
-				Platform:        "hyperliquid",
-				StopLossATRMult: &mult,
-				CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+				Type: "spot", Platform: "hyperliquid",
+				CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"},
 			},
-			expected: []string{},
+			dropped: false,
 		},
 		{
-			name: "paper tiered_tp_atr not filtered (#781)",
+			name: "paper tiered_tp_atr → kept (#781)",
 			sc: StrategyConfig{
-				Args:            hlPaperArgs,
-				Type:            "perps",
-				Platform:        "hyperliquid",
+				Args: hlPaperArgs, Type: "perps", Platform: "hyperliquid",
 				StopLossATRMult: &mult,
-				CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}, {Name: "tp_at_pct"}},
+				CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr"},
 			},
-			expected: []string{"tiered_tp_atr", "tp_at_pct"},
+			dropped: false,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := filterCloseStrategiesForHLOnChainProtection(tc.sc)
-			if len(got) != len(tc.expected) {
-				t.Fatalf("filtered = %v, want %v", got, tc.expected)
-			}
-			for i, ref := range got {
-				if ref.Name != tc.expected[i] {
-					t.Errorf("filtered[%d] = %q, want %q", i, ref.Name, tc.expected[i])
+			got := strategyConfigWithOnChainProtectionFilter(tc.sc)
+			if tc.dropped {
+				if got.CloseStrategy != nil {
+					t.Fatalf("close ref = %v, want nil (dropped for on-chain TP)", got.CloseStrategy)
 				}
+				return
+			}
+			if got.CloseStrategy == nil || tc.sc.CloseStrategy == nil ||
+				got.CloseStrategy.Name != tc.sc.CloseStrategy.Name {
+				t.Fatalf("close ref = %v, want %v retained", got.CloseStrategy, tc.sc.CloseStrategy)
 			}
 		})
 	}
@@ -276,16 +271,16 @@ func TestFilterCloseStrategiesForHLOnChainProtection(t *testing.T) {
 func TestCloseStrategiesSuppressedMatchesTieredTPATRClose(t *testing.T) {
 	// Every name in the suppression set must be recognized by strategyUsesTieredTPATRClose.
 	for name := range closeStrategiesSuppressedByOnChainProtection {
-		sc := StrategyConfig{CloseStrategies: []StrategyRef{{Name: name}}}
+		sc := StrategyConfig{CloseStrategy: &StrategyRef{Name: name}}
 		if !strategyUsesTieredTPATRClose(sc) {
 			t.Errorf("strategyUsesTieredTPATRClose returned false for %q, which is in closeStrategiesSuppressedByOnChainProtection — add it to strategyUsesTieredTPATRClose", name)
 		}
 	}
 
-	// A config with only non-suppressed close strategies must return false.
-	sc := StrategyConfig{CloseStrategies: []StrategyRef{{Name: "tp_at_pct"}, {Name: "tiered_tp_pct"}}}
+	// A config with a non-suppressed close must return false.
+	sc := StrategyConfig{CloseStrategy: &StrategyRef{Name: "tiered_tp_pct"}}
 	if strategyUsesTieredTPATRClose(sc) {
-		t.Error("strategyUsesTieredTPATRClose returned true for non-suppressed close strategies")
+		t.Error("strategyUsesTieredTPATRClose returned true for a non-suppressed close strategy")
 	}
 }
 
@@ -327,12 +322,12 @@ func TestBuildHyperliquidProtectionPlanCustomTiers(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &mult,
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.4},
 			},
-		}}},
+		}},
 	}
 	pos := &Position{Symbol: "ETH", Quantity: 1, AvgCost: 2500, EntryATR: 25, Side: "short"}
 	plan, ok := buildHyperliquidProtectionPlan(sc, pos)
@@ -351,13 +346,13 @@ func TestBuildHyperliquidProtectionPlanThreeTiers(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &mult,
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.8},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
-		}}},
+		}},
 	}
 	pos := &Position{
 		Symbol:   "ETH",
@@ -388,12 +383,12 @@ func TestHyperliquidProtectionTiersCoercesFinalTierToFullCoverage(t *testing.T) 
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.7},
 			},
-		}}},
+		}},
 	}
 	want := []hlProtectionTier{{Multiple: 1, Fraction: 0.5}, {Multiple: 2, Fraction: 1}}
 	if got := strategyTPTiers(sc); !reflect.DeepEqual(got, want) {
@@ -405,12 +400,12 @@ func TestHyperliquidProtectionTiersRejectsNonIncreasingAfterSort(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 0.5, "close_fraction": 0.7},
 			},
-		}}},
+		}},
 	}
 	if got := strategyTPTiers(sc); len(got) != 0 {
 		t.Errorf("tiers = %+v, want nil/empty for non-increasing sorted fractions", got)
@@ -421,13 +416,13 @@ func TestHyperliquidProtectionTiersPreservesDuplicateMultipleOrder(t *testing.T)
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.4},
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.6},
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.9},
 			},
-		}}},
+		}},
 	}
 	want := []hlProtectionTier{
 		{Multiple: 1, Fraction: 0.4},
@@ -457,7 +452,7 @@ func TestRunHyperliquidProtectionSyncManualAppliesOIDs(t *testing.T) {
 		ID:              "hl-manual-eth",
 		Type:            "manual",
 		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 		StopLossATRMult: &mult,
 	}
 	state := &StrategyState{
@@ -528,7 +523,7 @@ func TestRunHyperliquidProtectionSyncSkipsApplyAfterExternalClose(t *testing.T) 
 		ID:              "hl-manual-eth",
 		Type:            "manual",
 		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 		StopLossATRMult: &mult,
 	}
 	state := &StrategyState{
@@ -561,7 +556,7 @@ func TestRunHyperliquidProtectionSyncStampsTradeInDB(t *testing.T) {
 		ID:              "hl-eth",
 		Type:            "perps",
 		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 		StopLossATRMult: &mult,
 	}
 	ts := time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC)
@@ -618,7 +613,7 @@ func TestBuildHyperliquidProtectionPlanPadsTPArmedTiers(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &mult,
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live"}},
+		CloseStrategy:   &StrategyRef{Name: "tiered_tp_atr_live"},
 	}
 	pos := &Position{
 		Symbol:       "ETH",
@@ -654,11 +649,11 @@ func TestHyperliquidProtectionTiersRejectsSingleTier(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 1.0},
 			},
-		}}},
+		}},
 	}
 	if got := strategyTPTiers(sc); len(got) != 0 {
 		t.Errorf("tiers = %+v, want nil/empty for single-tier config", got)
@@ -670,10 +665,10 @@ func TestHyperliquidPlacesOnChainTPs_RegimeAwareWithoutStampedRegime(t *testing.
 		Args:     []string{"bollinger_bands", "ETH", "30m", "--mode=live"},
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
 			Params: map[string]interface{}{"use_defaults": true},
-		}},
+		},
 	}
 	if len(strategyTPTiers(sc)) != 0 {
 		t.Fatalf("strategyTPTiers(sc) should be nil before regime is stamped, got %#v", strategyTPTiers(sc))
@@ -685,10 +680,10 @@ func TestHyperliquidPlacesOnChainTPs_RegimeAwareWithoutStampedRegime(t *testing.
 
 func TestHyperliquidPlacesOnChainTPs_ScalarTiered(t *testing.T) {
 	sc := StrategyConfig{
-		Args:            []string{"bollinger_bands", "ETH", "30m", "--mode=live"},
-		Type:            "perps",
-		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		Args:          []string{"bollinger_bands", "ETH", "30m", "--mode=live"},
+		Type:          "perps",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	if !hyperliquidPlacesOnChainTPs(sc) {
 		t.Fatal("expected true for scalar tiered_tp_atr in live mode")
@@ -697,10 +692,10 @@ func TestHyperliquidPlacesOnChainTPs_ScalarTiered(t *testing.T) {
 
 func TestHyperliquidPlacesOnChainTPs_PaperFalse(t *testing.T) {
 	sc := StrategyConfig{
-		Args:            []string{"bollinger_bands", "ETH", "30m", "--mode=paper"},
-		Type:            "perps",
-		Platform:        "hyperliquid",
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr"}},
+		Args:          []string{"bollinger_bands", "ETH", "30m", "--mode=paper"},
+		Type:          "perps",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr"},
 	}
 	if hyperliquidPlacesOnChainTPs(sc) {
 		t.Fatal("paper HL perps must not place on-chain TPs (#781)")
@@ -712,7 +707,7 @@ func TestStrategyConfigWithOnChainProtectionFilter_PaperKeepsTieredTP(t *testing
 		Args: []string{"bollinger_bands", "ETH", "30m", "--mode=paper"},
 		Type: "perps", Platform: "hyperliquid",
 		OpenStrategy: StrategyRef{Name: "bollinger_bands"},
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -720,11 +715,11 @@ func TestStrategyConfigWithOnChainProtectionFilter_PaperKeepsTieredTP(t *testing
 					map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	filtered := strategyConfigWithOnChainProtectionFilter(sc)
-	if len(filtered.CloseStrategies) != 1 || filtered.CloseStrategies[0].Name != "tiered_tp_atr" {
-		t.Fatalf("paper close strategies = %#v, want tiered_tp_atr retained", filtered.CloseStrategies)
+	if filtered.CloseStrategy == nil || filtered.CloseStrategy.Name != "tiered_tp_atr" {
+		t.Fatalf("paper close strategy = %#v, want tiered_tp_atr retained", filtered.CloseStrategy)
 	}
 	got, err := buildStrategyRefsArg(filtered)
 	if err != nil {
@@ -742,10 +737,10 @@ func TestTieredTPATRPricesForRegimeUsesFleetDefaults(t *testing.T) {
 	sc := StrategyConfig{
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_regime",
 			Params: map[string]interface{}{"use_defaults": true},
-		}},
+		},
 	}
 	got := tieredTPATRPricesForRegime(sc, "long", 100, 10, "trending_up")
 	want := []float64{120, 140} // 2× and 4× ATR @ trending_up fleet baseline
@@ -770,7 +765,7 @@ func TestStrategyTPTiersForRegime_UnifiedBlock(t *testing.T) {
 		ID:       "hl-unified-eth",
 		Platform: "hyperliquid",
 		Type:     "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live_regime",
 			Params: map[string]interface{}{
 				"atr_source": "live",
@@ -796,7 +791,7 @@ func TestStrategyTPTiersForRegime_UnifiedBlock(t *testing.T) {
 					},
 				},
 			},
-		}},
+		},
 	}
 
 	up := strategyTPTiersForRegime(sc, "trending_up")

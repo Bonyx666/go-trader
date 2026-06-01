@@ -26,6 +26,11 @@ func knownStrategyConfigKeys() map[string]bool {
 			known[name] = true
 		}
 	}
+	// #842: close_strategies (array) was collapsed to the single close_strategy
+	// ref, but UnmarshalJSON still reads the legacy array for back-compat, so it
+	// must not trip the unknown-field guard. A len>1 array is rejected with the
+	// strategy id in validateConfig; a len-1 array is lifted to close_strategy.
+	known["close_strategies"] = true
 	return known
 }
 
@@ -37,13 +42,11 @@ func unknownKeyHint(key string) string {
 	lk := strings.ToLower(key)
 	switch {
 	case strings.Contains(lk, "take_profit") || strings.Contains(lk, "tp_tier") || lk == "tp_tiers":
-		return "TP logic lives under close_strategies (e.g. [{\"name\":\"tiered_tp_atr\",\"params\":{\"tiers\":[...]}}]); manual_defaults.tp_tiers only seeds defaults for type=manual"
+		return "TP logic lives under close_strategy (e.g. {\"name\":\"tiered_tp_atr\",\"params\":{\"tp_tiers\":[...]}}); manual_defaults.tp_tiers only seeds defaults for type=manual"
 	case strings.HasPrefix(lk, "stop_loss") || strings.Contains(lk, "stoploss"):
 		return "valid SL fields: stop_loss_atr_mult, stop_loss_pct, stop_loss_margin_pct, trailing_stop_pct, trailing_stop_atr_mult (mutually exclusive)"
-	case lk == "close_strategy":
-		return "legacy pre-v13 field; use close_strategies (array of refs)"
 	case lk == "params" || lk == "open" || lk == "close":
-		return "pre-v13 flat shape; use open_strategy: {name, params} and close_strategies: [{name, params}, ...]"
+		return "pre-v13 flat shape; use open_strategy: {name, params} and close_strategy: {name, params}"
 	default:
 		return ""
 	}

@@ -96,7 +96,7 @@ func strategyTPTiersForRegime(sc StrategyConfig, regime string) []hlProtectionTi
 	}
 	var raw interface{}
 	regimeAware := false
-	for _, ref := range sc.CloseStrategies {
+	for _, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if !isTieredTPATRCloseName(n) {
 			continue
@@ -563,40 +563,31 @@ func isTieredTPATRCloseName(name string) bool {
 	return false
 }
 
-// filterCloseStrategiesForHLOnChainProtection returns the close-strategy list
-// with names that overlap on-chain reduce-only TPs removed. Other close
-// strategies (tp_at_pct, tiered_tp_pct, …) pass through unchanged so an
-// operator can layer a percent-based stop alongside the ATR-tiered TP limits.
-func filterCloseStrategiesForHLOnChainProtection(sc StrategyConfig) []StrategyRef {
-	if !hyperliquidPlacesOnChainTPs(sc) {
-		return sc.CloseStrategies
+// closeStrategySuppressedByOnChainProtection reports whether sc's single close
+// evaluator (#842) overlaps the on-chain reduce-only TPs and must be hidden
+// from the Python check script — the ATR-tiered TP ladder is placed on-chain
+// instead, so letting the software evaluator also fire would race the limit
+// fills. Returns false when the strategy doesn't place on-chain TPs (paper, or
+// non-tiered close) or has no close.
+func closeStrategySuppressedByOnChainProtection(sc StrategyConfig) bool {
+	if !hyperliquidPlacesOnChainTPs(sc) || sc.CloseStrategy == nil {
+		return false
 	}
-	if len(sc.CloseStrategies) == 0 {
-		return sc.CloseStrategies
-	}
-	out := make([]StrategyRef, 0, len(sc.CloseStrategies))
-	for _, ref := range sc.CloseStrategies {
-		trimmed := strings.TrimSpace(ref.Name)
-		if _, suppress := closeStrategiesSuppressedByOnChainProtection[trimmed]; suppress {
-			continue
-		}
-		out = append(out, ref)
-	}
-	return out
+	_, suppress := closeStrategiesSuppressedByOnChainProtection[strings.TrimSpace(sc.CloseStrategy.Name)]
+	return suppress
 }
 
 // strategyConfigWithOnChainProtectionFilter returns a shallow copy of sc with
-// CloseStrategies filtered to drop on-chain-overlapping evaluators. Used at the
-// runHyperliquidCheck call site so the Python check script doesn't see the
-// suppressed names. Other fields share storage with the original — callers
-// must not mutate slice/map fields on the returned copy.
+// the close ref dropped when it overlaps on-chain reduce-only TPs. Used at the
+// runHyperliquidCheck call site so the Python check script doesn't evaluate the
+// suppressed close. Other fields share storage with the original — callers must
+// not mutate slice/map fields on the returned copy.
 func strategyConfigWithOnChainProtectionFilter(sc StrategyConfig) StrategyConfig {
-	filtered := filterCloseStrategiesForHLOnChainProtection(sc)
-	if len(filtered) == len(sc.CloseStrategies) {
+	if !closeStrategySuppressedByOnChainProtection(sc) {
 		return sc
 	}
 	clone := sc
-	clone.CloseStrategies = filtered
+	clone.CloseStrategy = nil
 	return clone
 }
 

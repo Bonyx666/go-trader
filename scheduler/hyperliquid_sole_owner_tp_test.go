@@ -15,12 +15,12 @@ func soleOwnerTPSC() StrategyConfig {
 		Type:     "perps",
 		Symbol:   "ETH",
 		Args:     []string{"sma", "ETH", "1h", "--mode=live"},
-		CloseStrategies: []StrategyRef{{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live", Params: map[string]interface{}{
 			"tiers": []interface{}{
 				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 0.5},
 				map[string]interface{}{"atr_multiple": 3.0, "close_fraction": 1.0},
 			},
-		}}},
+		}},
 	}
 }
 

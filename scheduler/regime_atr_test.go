@@ -158,14 +158,12 @@ func TestStrategyTPTiersForRegime_LegacyScalarUntouched(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr", Params: map[string]interface{}{
-				"tiers": []interface{}{
-					map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
-					map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
-				},
-			}},
-		},
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr", Params: map[string]interface{}{
+			"tiers": []interface{}{
+				map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5},
+				map[string]interface{}{"atr_multiple": 2.0, "close_fraction": 1.0},
+			},
+		}},
 	}
 	tiers := strategyTPTiersForRegime(sc, "")
 	if len(tiers) != 2 {
@@ -175,11 +173,9 @@ func TestStrategyTPTiersForRegime_LegacyScalarUntouched(t *testing.T) {
 
 func TestStrategyTPTiersForRegime_RegimeAwareNeedsRegime(t *testing.T) {
 	sc := StrategyConfig{
-		Type:     "perps",
-		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{
-			{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
-		},
+		Type:          "perps",
+		Platform:      "hyperliquid",
+		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
 	}
 	// Empty regime → nil so the protection loop defers TP placement.
 	if tiers := strategyTPTiersForRegime(sc, ""); len(tiers) != 0 {

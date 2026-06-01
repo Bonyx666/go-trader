@@ -807,13 +807,13 @@ func validateRegimeATRConfig(cfg *Config) []string {
 		// tiered_tp_atr_live_regime close ref and parse its tier list shape.
 		// Errors are surfaced here so a typo in tier shapes can't silently
 		// disable on-chain TPs.
-		for j, ref := range sc.CloseStrategies {
+		for _, ref := range sc.closeRefs() {
 			name := strings.ToLower(strings.TrimSpace(ref.Name))
 			if name != "tiered_tp_atr_regime" && name != "tiered_tp_atr_live_regime" {
 				continue
 			}
 			usesRegime = true
-			subPrefix := fmt.Sprintf("%s.close_strategies[%d](%s)", prefix, j, ref.Name)
+			subPrefix := fmt.Sprintf("%s.close_strategy(%s)", prefix, ref.Name)
 			// #841 2b: unified per-regime block — validate the top-level
 			// trend_regime shape and skip the legacy tier-keyed checks.
 			if closeParamsAreUnifiedRegime(ref.Params) {

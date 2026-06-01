@@ -167,7 +167,25 @@ def _simulate_one(cfg: dict, candles: List[dict]) -> List[dict]:
     merged_params = {**defaults, **params}
 
     df_signals = reg.apply_strategy(open_name, df, merged_params)
-    close_refs = [dict(r) for r in (cfg.get("close_strategies") or [])]
+    # #842: a strategy has a single close_strategy ref; still accept the legacy
+    # close_strategies array (length <=1 after the collapse). The Backtester's
+    # close_strategies= list interface is fed the 0-or-1 element list.
+    single_close = cfg.get("close_strategy")
+    if isinstance(single_close, dict) and single_close.get("name"):
+        close_refs = [dict(single_close)]
+    else:
+        legacy = cfg.get("close_strategies") or []
+        # Match the live Go loader (#842): the array collapsed to a single
+        # close_strategy, so reject a len>1 legacy array instead of previewing
+        # it under the old max-fraction semantics the scheduler no longer runs.
+        if len(legacy) > 1:
+            raise ValueError(
+                f"{len(legacy)} close_strategies supplied; the array model was "
+                "collapsed to a single close_strategy (#842) — keep one "
+                "profit-taking close and move risk backstops to strategy-level "
+                "stop fields"
+            )
+        close_refs = [dict(r) for r in legacy]
     if close_refs:
         df_signals = ensure_atr_indicator(df_signals)
 

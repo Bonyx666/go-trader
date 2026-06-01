@@ -24,10 +24,10 @@ func postTPSLTestStrategy(slAfter interface{}, tiers []interface{}) StrategyConf
 		Type:            "perps",
 		Script:          "shared_scripts/check_hyperliquid.py",
 		StopLossATRMult: &atrMult,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_live",
 			Params: params,
-		}},
+		},
 	}
 }
 
@@ -297,7 +297,7 @@ func TestParseStrategyTPSLAfterRules(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
@@ -307,7 +307,7 @@ func TestParseStrategyTPSLAfterRules(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 2, "close_fraction": 0.5},
 				},
 			},
-		}},
+		},
 	}
 	rules, errs := parseStrategyTPSLAfterRules(sc)
 	if len(errs) != 0 {
@@ -352,7 +352,7 @@ func TestParseStrategyTPSLAfterRules_ReportsMalformed(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr",
 			Params: map[string]interface{}{
 				"sl_after": "unknown-string",
@@ -361,7 +361,7 @@ func TestParseStrategyTPSLAfterRules_ReportsMalformed(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	_, errs := parseStrategyTPSLAfterRules(sc)
 	if len(errs) < 2 {
@@ -377,7 +377,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailing(t *testing.T) {
 		Platform:            "hyperliquid",
 		TrailingStopATRMult: &trail,
 		StopLossATRMult:     &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
@@ -386,7 +386,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailing(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -404,7 +404,7 @@ func TestValidatePostTPStopLossRules_RejectsNoFixedSL(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
@@ -413,7 +413,7 @@ func TestValidatePostTPStopLossRules_RejectsNoFixedSL(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -433,7 +433,7 @@ func TestValidatePostTPStopLossRules_AcceptsValid(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": "breakeven",
@@ -442,7 +442,7 @@ func TestValidatePostTPStopLossRules_AcceptsValid(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0, "sl_after": map[string]interface{}{"atr_mult": 0.5}},
 				},
 			},
-		}},
+		},
 	}
 	if errs := validatePostTPStopLossRules(sc); len(errs) != 0 {
 		t.Fatalf("expected no errors, got %v", errs)
@@ -562,7 +562,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailFromHereOnManual(t *testing.T) 
 		Type:            "manual",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": map[string]interface{}{
@@ -573,7 +573,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailFromHereOnManual(t *testing.T) 
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -727,10 +727,10 @@ func TestRunPostTPStopLossAdjustment_RegimeTPATRFraction(t *testing.T) {
 		Type:            "perps",
 		Script:          "shared_scripts/check_hyperliquid.py",
 		StopLossATRMult: &atrMult,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name:   "tiered_tp_atr_live_regime",
 			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
-		}},
+		},
 	}
 	pos := &Position{
 		Symbol:                   "ETH",
@@ -1194,13 +1194,13 @@ func TestValidatePostTPStopLossRules_RejectsSLAfterOnNonTieredCloseRef(t *testin
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tp_at_pct",
 			Params: map[string]interface{}{
 				"pct":      0.05,
 				"sl_after": "breakeven", // not honored — should be flagged
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -1220,14 +1220,14 @@ func TestValidatePostTPStopLossRules_RejectsSLAfterOnNonTieredTier(t *testing.T)
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_pct", // not the ATR variant
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
 					map[string]interface{}{"pct": 0.05, "close_fraction": 0.5, "sl_after": "breakeven"},
 				},
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -1247,7 +1247,7 @@ func TestValidatePostTPStopLossRules_NoOpWhenAbsent(t *testing.T) {
 		Type:            "perps",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"tiers": []interface{}{
@@ -1255,7 +1255,7 @@ func TestValidatePostTPStopLossRules_NoOpWhenAbsent(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	if errs := validatePostTPStopLossRules(sc); len(errs) != 0 {
 		t.Fatalf("expected no errors when sl_after is absent, got %v", errs)
@@ -1527,7 +1527,7 @@ func TestParseStrategyTPSLAfterRules_RegimeRoundTrip(t *testing.T) {
 	sc := StrategyConfig{
 		Type:     "perps",
 		Platform: "hyperliquid",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": slAfterRegimeRaw(map[string]float64{
@@ -1552,7 +1552,7 @@ func TestParseStrategyTPSLAfterRules_RegimeRoundTrip(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	rules, errs := parseStrategyTPSLAfterRules(sc)
 	if len(errs) != 0 {
@@ -1606,7 +1606,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailRegimeOnManual(t *testing.T) {
 		Type:            "manual",
 		Platform:        "hyperliquid",
 		StopLossATRMult: &atrSL,
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live",
 			Params: map[string]interface{}{
 				"sl_after": map[string]interface{}{
@@ -1623,7 +1623,7 @@ func TestValidatePostTPStopLossRules_RejectsTrailRegimeOnManual(t *testing.T) {
 					map[string]interface{}{"atr_multiple": 3, "close_fraction": 1.0},
 				},
 			},
-		}},
+		},
 	}
 	errs := validatePostTPStopLossRules(sc)
 	found := false
@@ -1683,7 +1683,7 @@ func TestParseStrategyTPSLAfterRules_UnifiedBlock(t *testing.T) {
 	}
 	sc := StrategyConfig{
 		ID: "hl-unified-slafter", Platform: "hyperliquid", Type: "perps",
-		CloseStrategies: []StrategyRef{{
+		CloseStrategy: &StrategyRef{
 			Name: "tiered_tp_atr_live_regime",
 			Params: map[string]interface{}{
 				regimeClassifierKey: map[string]interface{}{
@@ -1692,7 +1692,7 @@ func TestParseStrategyTPSLAfterRules_UnifiedBlock(t *testing.T) {
 					"ranging":       map[string]interface{}{"stop_loss_atr": 0.8, "tp_tiers": mkTier(1.0, 0.5, 0.3, 2.0)},
 				},
 			},
-		}},
+		},
 	}
 
 	up, errs := parseStrategyTPSLAfterRulesForRegime(sc, nil, "trending_up")

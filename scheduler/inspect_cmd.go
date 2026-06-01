@@ -138,6 +138,12 @@ func loadStrategyExplicitKeys(path string) (map[string]map[string]bool, error) {
 		for k := range s {
 			keys[k] = true
 		}
+		// #842: a legacy close_strategies array is read as the single
+		// close_strategy; treat either spelling as an explicit close so
+		// provenance display doesn't mark a configured close as "default".
+		if keys["close_strategies"] {
+			keys["close_strategy"] = true
+		}
 		out[id] = keys
 	}
 	return out, nil
@@ -258,7 +264,7 @@ type tpResolution struct {
 
 func resolveTP(sc StrategyConfig, explicit map[string]bool) tpResolution {
 	res := tpResolution{}
-	for i, ref := range sc.CloseStrategies {
+	for i, ref := range sc.closeRefs() {
 		n := strings.ToLower(strings.TrimSpace(ref.Name))
 		if !isTieredTPATRCloseName(n) {
 			continue
@@ -274,7 +280,7 @@ func resolveTP(sc StrategyConfig, explicit map[string]bool) tpResolution {
 		switch n {
 		case "tiered_tp_atr_regime", "tiered_tp_atr_live_regime":
 			res.RegimeTP = true
-			res.DetailLines = formatInspectRegimeTPDetailLines(ref.Name, ref, hasTiers, useDefaults, explicit["close_strategies"])
+			res.DetailLines = formatInspectRegimeTPDetailLines(ref.Name, ref, hasTiers, useDefaults, explicit["close_strategy"])
 			if tiers := strategyTPTiersForRegime(sc, canonicalTrendRegimeLabels[0]); len(tiers) > 0 {
 				res.Tiers = tiers
 			}
@@ -443,8 +449,8 @@ func formatStrategyInspection(sc StrategyConfig, explicit map[string]bool, cfg *
 	if len(sc.OpenStrategy.Params) > 0 {
 		fmt.Fprintf(&b, "    params:            %s\n", stableParamSummary(sc.OpenStrategy.Params))
 	}
-	fmt.Fprintf(&b, "  close_strategies:    %s%s\n", formatCloseStrategyList(sc.CloseStrategies), markIfDefault(explicit, "close_strategies"))
-	for i, ref := range sc.CloseStrategies {
+	fmt.Fprintf(&b, "  close_strategy:      %s%s\n", formatCloseStrategyList(sc.closeRefs()), markIfDefault(explicit, "close_strategy"))
+	for i, ref := range sc.closeRefs() {
 		if len(ref.Params) == 0 {
 			continue
 		}
@@ -475,9 +481,9 @@ func formatStrategyInspection(sc StrategyConfig, explicit map[string]bool, cfg *
 		tp := resolveTP(sc, explicit)
 		fmt.Fprintf(&b, "  take_profit:\n")
 		if !tp.OK {
-			fmt.Fprintf(&b, "    source:            none (no tiered_tp_atr* in close_strategies)\n")
+			fmt.Fprintf(&b, "    source:            none (no tiered_tp_atr* close_strategy)\n")
 		} else {
-			fmt.Fprintf(&b, "    source:            close_strategies[%d] %s\n", tp.CloseIndex, tp.CloseName)
+			fmt.Fprintf(&b, "    source:            close_strategy %s\n", tp.CloseName)
 			for _, line := range tp.DetailLines {
 				fmt.Fprintf(&b, "    %s\n", line)
 			}
@@ -523,12 +529,8 @@ func formatStrategySummaryLine(sc StrategyConfig, explicit map[string]bool) stri
 	if sc.OpenStrategy.Name != "" {
 		parts = append(parts, fmt.Sprintf("open=%s", sc.OpenStrategy.Name))
 	}
-	if len(sc.CloseStrategies) > 0 {
-		names := make([]string, 0, len(sc.CloseStrategies))
-		for _, ref := range sc.CloseStrategies {
-			names = append(names, ref.Name)
-		}
-		parts = append(parts, fmt.Sprintf("close=[%s]", strings.Join(names, ",")))
+	if sc.CloseStrategy != nil {
+		parts = append(parts, fmt.Sprintf("close=%s", sc.CloseStrategy.Name))
 	} else {
 		parts = append(parts, "close=open-as-close")
 	}
@@ -556,12 +558,12 @@ func buildStrategyInspectionJSON(sc StrategyConfig, explicit map[string]bool, cf
 	if explicit == nil {
 		explicit = map[string]bool{}
 	}
-	closeRefs := make([]map[string]interface{}, 0, len(sc.CloseStrategies))
-	for _, ref := range sc.CloseStrategies {
-		closeRefs = append(closeRefs, map[string]interface{}{
-			"name":   ref.Name,
-			"params": ref.Params,
-		})
+	var closeRefJSON interface{} // null when open-as-close (#842: single close)
+	if sc.CloseStrategy != nil {
+		closeRefJSON = map[string]interface{}{
+			"name":   sc.CloseStrategy.Name,
+			"params": sc.CloseStrategy.Params,
+		}
 	}
 	out := map[string]interface{}{
 		"id":       sc.ID,
@@ -572,8 +574,8 @@ func buildStrategyInspectionJSON(sc StrategyConfig, explicit map[string]bool, cf
 			"params":   sc.OpenStrategy.Params,
 			"explicit": explicit["open_strategy"],
 		},
-		"close_strategies":          closeRefs,
-		"close_strategies_explicit": explicit["close_strategies"],
+		"close_strategy":            closeRefJSON,
+		"close_strategy_explicit":   explicit["close_strategy"],
 		"max_drawdown_pct":          sc.MaxDrawdownPct,
 		"max_drawdown_pct_explicit": explicit["max_drawdown_pct"],
 	}
