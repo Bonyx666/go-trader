@@ -125,15 +125,25 @@ func strategyTPTiersForRegime(sc StrategyConfig, regime string) []hlProtectionTi
 	// Legacy scalar tiered_tp_atr*.
 	tiers := parseHLProtectionTiers(raw)
 	if len(tiers) == 0 {
-		tiers = []hlProtectionTier{
-			{Multiple: 1, Fraction: 0.5},
-			{Multiple: 2, Fraction: 1},
-		}
+		tiers = defaultHLProtectionTiers()
 	}
 	if len(tiers) < 2 {
 		return nil
 	}
 	return finalizeProtectionTiers(tiers)
+}
+
+// defaultHLProtectionTiers is the canonical fallback tier ladder used when a
+// tiered_tp_atr* close ref omits explicit tiers ({1×,0.5},{2×,1.0}). Single
+// source of truth for the scalar default — post_tp_sl.go derives
+// tp_atr_fraction's default tier multiples from this (so the firing-tier
+// multiple stays in sync if the ladder ever changes), and post_tp_sl.py mirrors
+// it as _DEFAULT_SCALAR_TP_TIERS.
+func defaultHLProtectionTiers() []hlProtectionTier {
+	return []hlProtectionTier{
+		{Multiple: 1, Fraction: 0.5},
+		{Multiple: 2, Fraction: 1},
+	}
 }
 
 // finalizeProtectionTiers enforces the cumulative-fraction invariant and

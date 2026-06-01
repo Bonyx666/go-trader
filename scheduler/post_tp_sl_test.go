@@ -685,6 +685,88 @@ func TestRunPostTPStopLossAdjustment_BreakevenAfterTP1(t *testing.T) {
 	}
 }
 
+// Locks in the fire-time alignment for tiered_tp_atr_regime + tp_atr_fraction:
+// the regime re-parse at runPostTPStopLossAdjustment must resolve the firing
+// tier's multiple AND the per-regime fraction against pos.Regime, then trail at
+// fraction × tier-multiple. Previously only reload gating + scalar/default fire
+// paths were covered (bot review #836, item 2).
+func TestRunPostTPStopLossAdjustment_RegimeTPATRFraction(t *testing.T) {
+	old := runHyperliquidUpdateStopLossFunc
+	defer func() { runHyperliquidUpdateStopLossFunc = old }()
+
+	var gotTrigger, gotQty float64
+	runHyperliquidUpdateStopLossFunc = func(script, symbol, side string, size, triggerPx float64, cancelStopLossOID int64) (*HyperliquidStopLossUpdateResult, string, error) {
+		gotTrigger, gotQty = triggerPx, size
+		return &HyperliquidStopLossUpdateResult{StopLossOID: 999, StopLossTriggerPx: triggerPx}, "", nil
+	}
+
+	// ADX 3-label regime tiers. Under "trending_up", tier 0 resolves to mult 2.0.
+	regimeTier := func(atr, frac float64) map[string]interface{} {
+		return map[string]interface{}{"trend_regime": map[string]interface{}{
+			"trending_up":   map[string]interface{}{"atr": atr, "close_fraction": frac},
+			"trending_down": map[string]interface{}{"atr": atr, "close_fraction": frac},
+			"ranging":       map[string]interface{}{"atr": atr, "close_fraction": frac},
+		}}
+	}
+	tier0 := regimeTier(2.0, 0.5)
+	tier0["sl_after"] = map[string]interface{}{
+		"kind": "trail_from_here",
+		"tp_atr_fraction": map[string]interface{}{"trend_regime": map[string]interface{}{
+			"trending_up":   0.5,
+			"trending_down": 0.5,
+			"ranging":       0.5,
+		}},
+	}
+	tier1 := regimeTier(4.0, 1.0)
+
+	atrMult := 1.0
+	sc := StrategyConfig{
+		ID:              "hl-sl-after-regime",
+		Platform:        "hyperliquid",
+		Type:            "perps",
+		Script:          "shared_scripts/check_hyperliquid.py",
+		StopLossATRMult: &atrMult,
+		CloseStrategies: []StrategyRef{{
+			Name:   "tiered_tp_atr_live_regime",
+			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
+		}},
+	}
+	pos := &Position{
+		Symbol:                   "ETH",
+		Quantity:                 0.5, // half of initial = TP1 filled
+		InitialQuantity:          1.0,
+		AvgCost:                  100,
+		EntryATR:                 5,
+		Side:                     "long",
+		Regime:                   "trending_up",
+		StopLossOID:              111,
+		StopLossTriggerPx:        95,
+		TPOIDs:                   []int64{0, 222}, // tier 0 filled
+		TPArmedTiers:             []bool{true, true},
+		SLAdjustedTiersProcessed: 0,
+	}
+	state := &StrategyState{ID: sc.ID, Positions: map[string]*Position{"ETH": pos}}
+	var mu sync.RWMutex
+
+	if !runPostTPStopLossAdjustment(sc, state, "ETH", 105, nil, &mu, nil, nil, nil) {
+		t.Fatal("expected runPostTPStopLossAdjustment to apply")
+	}
+	// trail = 0.5 (fraction@trending_up) × 2.0 (tier-0 mult@trending_up) = 1.0× ATR.
+	// long trail trigger = mark − trail×ATR = 105 − 1.0×5 = 100.
+	if gotTrigger != 100 {
+		t.Fatalf("trigger=%v, want 100 (0.5×2.0×ATR(5) below mark 105)", gotTrigger)
+	}
+	if pos.PostTPTrailingATRMult == nil || *pos.PostTPTrailingATRMult != 1.0 {
+		t.Fatalf("PostTPTrailingATRMult=%v, want 1.0 (fraction × firing-tier multiple)", pos.PostTPTrailingATRMult)
+	}
+	if gotQty != 0.5 {
+		t.Errorf("qty=%v, want 0.5", gotQty)
+	}
+	if pos.SLAdjustedTiersProcessed != 1 {
+		t.Errorf("SLAdjustedTiersProcessed=%d, want 1", pos.SLAdjustedTiersProcessed)
+	}
+}
+
 func TestRunPostTPStopLossAdjustment_Idempotent(t *testing.T) {
 	old := runHyperliquidUpdateStopLossFunc
 	defer func() { runHyperliquidUpdateStopLossFunc = old }()

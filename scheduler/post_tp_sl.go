@@ -719,15 +719,24 @@ func parseStrategyTPSLAfterRulesForRegime(sc StrategyConfig, labels []string, re
 		}
 	}
 	if tieredName == "tiered_tp_atr_regime" || tieredName == "tiered_tp_atr_live_regime" {
-		rules, regimeErrs := parseRegimeStrategyTPSLAfterRules(sc, tieredName, defaultRaw, tiersRaw, labels, regime, regimeUseDefaults, rules)
+		rules, regimeErrs := parseRegimeStrategyTPSLAfterRules(tieredName, tiersRaw, labels, regime, regimeUseDefaults, rules)
 		errs = append(errs, regimeErrs...)
 		return rules, errs
 	}
 	items, ok := tiersRaw.([]interface{})
 	if !ok || len(items) == 0 {
 		if rules.HasAny() {
-			rules.Multiples = []float64{1, 2}
-			rules.TierFingerprints = []string{"default:1", "default:2"}
+			// No explicit tiers → tp_atr_fraction resolves against the canonical
+			// fallback ladder. Derive from defaultHLProtectionTiers() (single
+			// source of truth in hyperliquid_protection.go) so the firing-tier
+			// multiple can't drift if the default ladder ever changes.
+			defaults := defaultHLProtectionTiers()
+			rules.Multiples = make([]float64, len(defaults))
+			rules.TierFingerprints = make([]string, len(defaults))
+			for i, t := range defaults {
+				rules.Multiples[i] = t.Multiple
+				rules.TierFingerprints[i] = fmt.Sprintf("default:%g", t.Multiple)
+			}
 		}
 		return rules, errs
 	}
@@ -771,7 +780,7 @@ func parseStrategyTPSLAfterRulesForRegime(sc StrategyConfig, labels []string, re
 	return rules, errs
 }
 
-func parseRegimeStrategyTPSLAfterRules(sc StrategyConfig, tieredName string, defaultRaw, tiersRaw interface{}, labels []string, regime string, useDefaults bool, rules tierSLAfterRules) (tierSLAfterRules, []string) {
+func parseRegimeStrategyTPSLAfterRules(tieredName string, tiersRaw interface{}, labels []string, regime string, useDefaults bool, rules tierSLAfterRules) (tierSLAfterRules, []string) {
 	var errs []string
 	items, ok := tiersRaw.([]interface{})
 	if !ok {
@@ -854,8 +863,6 @@ func parseRegimeStrategyTPSLAfterRules(sc StrategyConfig, tieredName string, def
 		rules.Multiples[i] = p.multiple
 		rules.TierFingerprints[i] = p.fingerprint
 	}
-	_ = sc
-	_ = defaultRaw
 	return rules, errs
 }
 

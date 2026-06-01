@@ -69,6 +69,41 @@ func TestValidateRegimeATRConfig_CompositeStopLossExplicit(t *testing.T) {
 	}
 }
 
+// Regression: a per-tier sl_after on a regime-tiered close (here tp_atr_fraction
+// under a composite regime_atr_window) must validate cleanly. parseRegimeTPTiers
+// previously did not strip the sl_after sibling key before the ATR-block
+// allowlist, so the tier was rejected as `unknown key "sl_after"` at config-load
+// (and the same re-parse silently skipped arming at fire time). Surfaced while
+// adding the fire-path test for PR #836.
+func TestValidateRegimeATRConfig_CompositeSLAfterTPATRFraction(t *testing.T) {
+	tier0 := composite7StateTier(2.0, 0.5)
+	tier0["sl_after"] = map[string]interface{}{
+		"kind": "trail_from_here",
+		"tp_atr_fraction": map[string]interface{}{"trend_regime": map[string]interface{}{
+			"trending_up_clean": 0.5, "trending_up_choppy": 0.5,
+			"trending_down_clean": 0.5, "trending_down_choppy": 0.5,
+			"ranging_directional": 0.5, "ranging_volatile": 0.5, "ranging_quiet": 0.5,
+		}},
+	}
+	tier1 := composite7StateTier(4.0, 1.0)
+	slMult := 1.5
+	sc := StrategyConfig{
+		ID:              "hl-test",
+		Type:            "perps",
+		Platform:        "hyperliquid",
+		RegimeATRWindow: "daily",
+		StopLossATRMult: &slMult,
+		CloseStrategies: []StrategyRef{{
+			Name:   "tiered_tp_atr_regime",
+			Params: map[string]interface{}{"tiers": []interface{}{tier0, tier1}},
+		}},
+	}
+	cfg := compositeRegimeCfg(sc)
+	if errs := validateRegimeATRConfig(cfg); len(errs) != 0 {
+		t.Fatalf("composite per-tier sl_after tp_atr_fraction must validate, got: %v", errs)
+	}
+}
+
 func TestValidateRegimeATRConfig_CompositeTrailingExplicit(t *testing.T) {
 	sc := StrategyConfig{
 		ID:                    "hl-test",

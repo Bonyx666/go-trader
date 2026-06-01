@@ -572,11 +572,17 @@ func parseRegimeTPTiers(raw interface{}, ctxLabel string, labels []string) ([]re
 		if perRegimeHasFrac {
 			surface = regimeSurfaceTPTierWithFrac
 		}
-		// Pass the tier object minus close_fraction so the inner allowlist
-		// only sees use_defaults / trend_regime.
+		// Pass the tier object minus close_fraction and sl_after so the inner
+		// allowlist only sees use_defaults / trend_regime. Both are legitimate
+		// sibling keys handled elsewhere — close_fraction by the tier-fraction
+		// logic below, sl_after by parseRegimeStrategyTPSLAfterRules — and must
+		// not trip the ATR-block unknown-key check. Regression: without stripping
+		// sl_after, a per-tier sl_after on a regime close (e.g. tp_atr_fraction)
+		// failed config-load AND silently never armed at fire time, since the
+		// fire-path tier-multiple resolution re-parses through here.
 		subset := make(map[string]interface{}, len(m))
 		for k, v := range m {
-			if k == "close_fraction" {
+			if k == "close_fraction" || k == "sl_after" {
 				continue
 			}
 			subset[k] = v
