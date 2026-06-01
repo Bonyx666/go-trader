@@ -260,3 +260,39 @@ def test_evaluate_reads_tp_tiers_and_legacy_tiers_equivalently(registry):
     assert canonical["close_fraction"] == pytest.approx(1.0)
     assert legacy["close_fraction"] == pytest.approx(1.0)
     assert canonical["close_fraction"] == legacy["close_fraction"]
+
+
+def test_unified_regime_block_evaluator(registry):
+    """#841 2b: the regime evaluator resolves a unified per-regime block via
+    select-then-scalar — each regime's own ladder drives close_fraction."""
+    params = {
+        "trend_regime": {
+            "trending_up": {"stop_loss_atr": 1.5, "tp_tiers": [
+                {"atr_multiple": 2.0, "close_fraction": 0.5},
+                {"atr_multiple": 4.0, "close_fraction": 1.0},
+            ]},
+            "trending_down": {"tp_tiers": [
+                {"atr_multiple": 1.8, "close_fraction": 0.5},
+                {"atr_multiple": 3.0, "close_fraction": 1.0},
+            ]},
+            "ranging": {"tp_tiers": [
+                {"atr_multiple": 1.0, "close_fraction": 0.5},
+                {"atr_multiple": 2.0, "close_fraction": 1.0},
+            ]},
+        }
+    }
+    base_pos = {"avg_cost": 100.0, "current_quantity": 1.0,
+                "initial_quantity": 1.0, "entry_atr": 10.0, "side": "long"}
+    market = {"mark_price": 130.0}  # +3 ATR
+
+    # trending_up: 3 ATR clears the 2x tier only → close 50%.
+    up = registry.evaluate("tiered_tp_atr_regime", {**base_pos, "regime": "trending_up"}, market, params)
+    assert up["close_fraction"] == pytest.approx(0.5), up
+
+    # ranging: 3 ATR clears both 1x and 2x (final) → close 100%.
+    rng = registry.evaluate("tiered_tp_atr_regime", {**base_pos, "regime": "ranging"}, market, params)
+    assert rng["close_fraction"] == pytest.approx(1.0), rng
+
+    # Missing regime → no close.
+    none = registry.evaluate("tiered_tp_atr_regime", base_pos, market, params)
+    assert none["close_fraction"] == 0.0

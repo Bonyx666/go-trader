@@ -20,8 +20,10 @@ from _helpers import (
 )
 from regime_atr import (
     RegimeTierSpec,
+    close_params_are_unified_regime,
     parse_regime_tp_tiers,
     resolve_regime_tier,
+    unified_regime_scalar_params,
 )
 
 
@@ -36,6 +38,29 @@ def _resolve_tiers_for_regime(
     Go config loader validates at startup), but tests and the backtester
     rely on this helper to mirror parser semantics.
     """
+    # #841 2b: unified per-regime block — select this regime's scalar ladder and
+    # build the cumulative (atr_multiple, close_fraction) list directly.
+    if close_params_are_unified_regime(params):
+        scalar, _ = unified_regime_scalar_params(params, regime)
+        if scalar is None:
+            return [], []
+        parsed: List[Tuple[float, float]] = []
+        for t in scalar.get("tp_tiers", []) or []:
+            if not isinstance(t, dict):
+                continue
+            try:
+                mult = float(t.get("atr_multiple"))
+                frac = float(t.get("close_fraction"))
+            except (TypeError, ValueError):
+                continue
+            if mult <= 0 or frac <= 0:
+                continue
+            parsed.append((mult, max(min(frac, 1.0), 0.0)))
+        parsed.sort(key=lambda p: p[0])
+        if parsed:
+            parsed[-1] = (parsed[-1][0], 1.0)
+        return parsed, []
+
     use_defaults = bool(params.get("use_defaults"))
     raw_tiers = tier_list_from_params(params)
     specs, errs = parse_regime_tp_tiers(raw_tiers, "tiered_tp_atr_regime", use_defaults)

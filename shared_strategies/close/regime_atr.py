@@ -51,6 +51,35 @@ def _regime_entry_atr_raw(entry_raw: dict):
         return entry_raw.get("atr"), True, None
     return None, False, None
 
+
+def close_params_are_unified_regime(params) -> bool:
+    """Report whether a close ref's params use the #841 unified per-regime block
+    (top-level ``trend_regime``) vs the legacy tier-keyed shape."""
+    return isinstance(params, dict) and REGIME_CLASSIFIER_KEY in params
+
+
+def unified_regime_scalar_params(params: dict, regime: str):
+    """Select the scalar tiered-close plan for ``regime`` from a unified block.
+    Returns (scalar_params, stop_loss_atr) where scalar_params is a plain scalar
+    tiered_tp_atr config ({"tp_tiers": [...], "atr_source": ...}), or (None, 0.0)
+    when the label is absent/malformed (caller falls back). Mirrors the Go
+    unifiedRegimeScalarParams. #841 2b."""
+    trend = params.get(REGIME_CLASSIFIER_KEY)
+    if not isinstance(trend, dict):
+        return None, 0.0
+    label = trend.get((regime or "").strip())
+    if not isinstance(label, dict) or "tp_tiers" not in label:
+        return None, 0.0
+    scalar = {"tp_tiers": label["tp_tiers"]}
+    if "atr_source" in params:
+        scalar["atr_source"] = params["atr_source"]
+    sl = 0.0
+    try:
+        sl = float(label.get("stop_loss_atr", 0) or 0)
+    except (TypeError, ValueError):
+        sl = 0.0
+    return scalar, sl
+
 REGIME_CLASSIFIER_KEY = "trend_regime"
 
 # regimeATRSurface equivalents — kept as string constants so the parser's
