@@ -365,3 +365,16 @@ func sendTradeDestination(n Notifier, id, content string) error {
 	}
 	return n.SendMessage(id, content)
 }
+
+// DiscordBackend returns the registered *DiscordNotifier, or nil if Discord is
+// not configured. Used to attach slash-command handling after startup.
+func (m *MultiNotifier) DiscordBackend() *DiscordNotifier {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, b := range m.backends {
+		if d, ok := b.notifier.(*DiscordNotifier); ok {
+			return d
+		}
+	}
+	return nil
+}
