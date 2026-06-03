@@ -453,7 +453,7 @@ func TestDrainPendingManualActions(t *testing.T) {
 		CreatedAt: time.Now().UTC(),
 	})
 
-	drainPendingManualActions(state, cfg, db)
+	alerts := drainPendingManualActions(state, cfg, db)
 
 	pos := state.Strategies[stratID].Positions["ETH"]
 	if pos == nil {
@@ -463,7 +463,91 @@ func TestDrainPendingManualActions(t *testing.T) {
 		t.Errorf("pos.Quantity = %g, want 0.5", pos.Quantity)
 	}
 
+	// #880: drain returns one alert (1 trade) so the caller fires sendTradeAlerts
+	// outside the state write lock.
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 manual alert, got %d", len(alerts))
+	}
+	if alerts[0].sc.ID != stratID {
+		t.Errorf("alert sc.ID = %q, want %q", alerts[0].sc.ID, stratID)
+	}
+	if alerts[0].trades != 1 {
+		t.Errorf("alert trades = %d, want 1", alerts[0].trades)
+	}
+	if alerts[0].ss != state.Strategies[stratID] {
+		t.Error("alert ss should point at the drained strategy state")
+	}
+
 	// Queue should be empty after drain.
+	remaining, _ := db.LoadPendingManualActions()
+	if len(remaining) != 0 {
+		t.Errorf("expected empty queue after drain, got %d rows", len(remaining))
+	}
+}
+
+// TestDrainPendingManualActionsAlerts verifies the #880 alert-collection
+// contract: drain aggregates the per-strategy trade count, the returned ss/trades
+// align with TradeHistory so sendTradeAlerts alerts the correct tail slice, and a
+// failed apply contributes no alert.
+func TestDrainPendingManualActionsAlerts(t *testing.T) {
+	db, err := OpenStateDB(":memory:")
+	if err != nil {
+		t.Fatalf("open state db: %v", err)
+	}
+	defer db.Close()
+
+	openID := "hl-manual-eth-live"  // open then full close → 2 trades, 0 open positions
+	otherID := "hl-manual-btc-live" // single open → 1 trade
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			openID:  {ID: openID, Platform: "hyperliquid", Type: "manual", Positions: map[string]*Position{}, Cash: 10000},
+			otherID: {ID: otherID, Platform: "hyperliquid", Type: "manual", Positions: map[string]*Position{}, Cash: 10000},
+		},
+	}
+	cfg := &Config{Strategies: []StrategyConfig{
+		{ID: openID, Type: "manual", Platform: "hyperliquid", Symbol: "ETH", Leverage: 10},
+		{ID: otherID, Type: "manual", Platform: "hyperliquid", Symbol: "BTC", Leverage: 10},
+	}}
+
+	origRecorder := tradeRecorder
+	tradeRecorder = func(_ string, _ Trade) error { return nil }
+	defer func() { tradeRecorder = origRecorder }()
+
+	now := time.Now().UTC()
+	// A close with no open position fails to apply → no alert, no trade.
+	// Inserted first so its id sits below maxDrained and it's still cleaned up.
+	_ = db.InsertPendingManualAction(PendingManualAction{StrategyID: otherID, Action: "close", Symbol: "DOGE", Side: "long", Quantity: 1, FillPrice: 0.1, IsFullClose: true, CreatedAt: now})
+	// ETH: open then full close (2 trades on one strategy).
+	_ = db.InsertPendingManualAction(PendingManualAction{StrategyID: openID, Action: "open", Symbol: "ETH", Side: "long", Quantity: 0.5, FillPrice: 2000, FillFee: 0.7, EntryATR: 50, CreatedAt: now})
+	_ = db.InsertPendingManualAction(PendingManualAction{StrategyID: openID, Action: "close", Symbol: "ETH", Side: "long", Quantity: 0.5, FillPrice: 2100, FillFee: 0.7, RealizedPnL: 49.3, IsFullClose: true, CreatedAt: now})
+	// BTC: single open (1 trade).
+	_ = db.InsertPendingManualAction(PendingManualAction{StrategyID: otherID, Action: "open", Symbol: "BTC", Side: "short", Quantity: 0.01, FillPrice: 60000, FillFee: 0.3, EntryATR: 500, CreatedAt: now})
+
+	alerts := drainPendingManualActions(state, cfg, db)
+
+	if len(alerts) != 2 {
+		t.Fatalf("expected 2 strategy alerts, got %d", len(alerts))
+	}
+	byID := map[string]manualAlert{}
+	for _, a := range alerts {
+		byID[a.sc.ID] = a
+	}
+	if got := byID[openID].trades; got != 2 {
+		t.Errorf("%s alert trades = %d, want 2 (open + close)", openID, got)
+	}
+	if got := byID[otherID].trades; got != 1 {
+		t.Errorf("%s alert trades = %d, want 1 (failed DOGE close excluded)", otherID, got)
+	}
+	// trades must not exceed the strategy's TradeHistory length, else
+	// sendTradeAlerts would slice a negative start.
+	for _, a := range alerts {
+		if a.trades > len(a.ss.TradeHistory) {
+			t.Errorf("%s alert trades=%d exceeds TradeHistory len=%d", a.sc.ID, a.trades, len(a.ss.TradeHistory))
+		}
+	}
+
+	// All non-failing rows drained and deleted; the failed DOGE close is also
+	// deleted (it sits below maxDrained), matching existing drain semantics.
 	remaining, _ := db.LoadPendingManualActions()
 	if len(remaining) != 0 {
 		t.Errorf("expected empty queue after drain, got %d rows", len(remaining))

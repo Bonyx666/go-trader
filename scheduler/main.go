@@ -573,8 +573,15 @@ func main() {
 		// #569: Drain pending manual-open / manual-close actions before the
 		// dueStrategies loop so newly-materialised positions are visible this cycle.
 		mu.Lock()
-		drainPendingManualActions(state, cfg, stateDB)
+		manualAlerts := drainPendingManualActions(state, cfg, stateDB)
 		mu.Unlock()
+		// #880: Emit trade alerts for adopted manual fills AFTER releasing mu.
+		// sendTradeAlerts re-acquires mu.RLock, so alerting inside the drain
+		// (which runs under mu.Lock) would self-deadlock. This gives manual fills
+		// the same DM/channel routing as normal live trades.
+		for _, ma := range manualAlerts {
+			sendTradeAlerts(ma.sc, ma.ss, ma.trades, &mu, notifier)
+		}
 
 		// #87: Resolve capital_pct → capital for strategies with dynamic sizing.
 		// Must run on cfg.Strategies (not dueStrategies) so resolved capital persists

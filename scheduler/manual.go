@@ -548,20 +548,33 @@ func runManualClose(args []string) int {
 	return 0
 }
 
-// drainPendingManualActions reads all rows from pending_manual_actions and
-// applies them to the in-memory AppState, then deletes the drained rows.
-// Called at the top of each scheduler cycle before dueStrategies is built.
-func drainPendingManualActions(state *AppState, cfg *Config, stateDB *StateDB) {
+// manualAlert captures one strategy's successfully drained manual actions so the
+// caller can emit trade alerts AFTER releasing mu. drainPendingManualActions runs
+// under mu.Lock and sendTradeAlerts re-acquires mu.RLock; since sync.RWMutex is
+// not reentrant, alerting inside the drain would self-deadlock (#880).
+type manualAlert struct {
+	sc     StrategyConfig
+	ss     *StrategyState
+	trades int // count of trades appended this drain for this strategy
+}
+
+// drainPendingManualActions reads all rows from pending_manual_actions, applies
+// them to the in-memory AppState, then deletes the drained rows. It returns one
+// manualAlert per strategy that had >=1 action successfully applied (with the
+// aggregated trade count) so the caller can fire sendTradeAlerts outside the
+// state write lock (#880). Called at the top of each scheduler cycle before
+// dueStrategies is built.
+func drainPendingManualActions(state *AppState, cfg *Config, stateDB *StateDB) []manualAlert {
 	if stateDB == nil {
-		return
+		return nil
 	}
 	actions, err := stateDB.LoadPendingManualActions()
 	if err != nil {
 		fmt.Printf("[manual] failed to load pending actions: %v\n", err)
-		return
+		return nil
 	}
 	if len(actions) == 0 {
-		return
+		return nil
 	}
 
 	scByID := make(map[string]StrategyConfig, len(cfg.Strategies))
@@ -570,6 +583,8 @@ func drainPendingManualActions(state *AppState, cfg *Config, stateDB *StateDB) {
 	}
 
 	var maxDrained int64
+	applied := make(map[string]*manualAlert)
+	var order []string // preserves id-sorted insertion order for deterministic alert emission
 	for _, a := range actions {
 		if err := applyManualAction(state, scByID, a); err != nil {
 			fmt.Printf("[manual] failed to apply action %d (%s %s): %v\n", a.ID, a.Action, a.StrategyID, err)
@@ -578,6 +593,16 @@ func drainPendingManualActions(state *AppState, cfg *Config, stateDB *StateDB) {
 		if a.ID > maxDrained {
 			maxDrained = a.ID
 		}
+		// applyManualAction appends exactly one trade per successful apply (open
+		// via recordPositionOpen, close via RecordTrade); aggregate per strategy
+		// so sendTradeAlerts alerts the correct tail slice of TradeHistory.
+		ma := applied[a.StrategyID]
+		if ma == nil {
+			ma = &manualAlert{sc: scByID[a.StrategyID], ss: state.Strategies[a.StrategyID]}
+			applied[a.StrategyID] = ma
+			order = append(order, a.StrategyID)
+		}
+		ma.trades++
 	}
 
 	if maxDrained > 0 {
@@ -585,6 +610,12 @@ func drainPendingManualActions(state *AppState, cfg *Config, stateDB *StateDB) {
 			fmt.Printf("[manual] failed to delete drained actions: %v\n", err)
 		}
 	}
+
+	alerts := make([]manualAlert, 0, len(order))
+	for _, id := range order {
+		alerts = append(alerts, *applied[id])
+	}
+	return alerts
 }
 
 // applyManualAction materialises one pending_manual_actions row into AppState.
