@@ -1,7 +1,9 @@
 {
-  "config_version": 15,
+  "config_version": 12,
+  "interval_seconds": 300,
   "db_file": "scheduler/state.db",
-  "default_stop_loss_atr_mult": 1,
+  "status_port": 8099,
+  "default_stop_loss_atr_mult": 1.0,
   "user_close_defaults": {
     "trailing_tp_ratchet": {
       "tp_tiers": [
@@ -10,139 +12,99 @@
       ]
     }
   },
+  "portfolio_risk": {
+    "max_drawdown_pct": 25,
+    "max_notional_usd": 0
+  },
+  "strategies": [
+    {
+      "id": "momentum-btc",
+      "type": "spot",
+      "script": "shared_scripts/check_strategy.py",
+      "args": ["momentum", "BTC/USDT", "1h"],
+      "capital": 1000,
+      "max_drawdown_pct": 60,
+      "interval_seconds": 300
+    },
+    {
+      "id": "pairs-btc-eth",
+      "type": "spot",
+      "script": "shared_scripts/check_strategy.py",
+      "args": ["pairs_spread", "BTC/USDT", "1d", "ETH/USDT"],
+      "capital": 1000,
+      "max_drawdown_pct": 60,
+      "interval_seconds": 86400
+    },
+    {
+      "id": "deribit-vol-btc",
+      "type": "options",
+      "script": "shared_scripts/check_options.py",
+      "args": ["vol_mean_reversion", "BTC", "--platform=deribit"],
+      "capital": 1000,
+      "max_drawdown_pct": 40,
+      "interval_seconds": 1200,
+      "theta_harvest": {
+        "enabled": true,
+        "profit_target_pct": 60,
+        "stop_loss_pct": 200,
+        "min_dte_close": 3
+      }
+    },
+    {
+      "id": "hl-momentum-btc",
+      "type": "perps",
+      "script": "shared_scripts/check_hyperliquid.py",
+      "args": ["momentum", "BTC", "1h", "--mode=paper"],
+      "capital": 1000,
+      "max_drawdown_pct": 50,
+      "interval_seconds": 300
+    },
+    {
+      "id": "hl-amd-btc",
+      "type": "perps",
+      "script": "shared_scripts/check_hyperliquid.py",
+      "args": ["amd_ifvg", "BTC", "15m", "--mode=paper"],
+      "capital": 1000,
+      "max_drawdown_pct": 50,
+      "interval_seconds": 900
+    }
+  ],
+  "leaderboard_post_time": "11:00",
   "discord": {
+    "enabled": true,
+    "token": "",
     "channels": {
-      "hyperliquid": "",
-      "hyperliquid-paper": "",
+      "spot": "",
       "options": "",
-      "spot": ""
+      "hyperliquid": "",
+      "hyperliquid-paper": ""
     },
     "dm_channels": {
       "hyperliquid": "PASTE_DISCORD_USER_OR_CHANNEL_ID",
       "hyperliquid-paper": "PASTE_DISCORD_USER_OR_CHANNEL_ID"
     },
-    "enabled": true,
-    "leaderboard_channel": "",
     "leaderboard_top_n": 5,
-    "token": ""
+    "leaderboard_channel": ""
   },
-  "interval_seconds": 300,
-  "leaderboard_post_time": "11:00",
+  "summary_frequency": {
+    "spot": "hourly",
+    "options": "every",
+    "hyperliquid": "every",
+    "topstep": "every"
+  },
   "leaderboard_summaries": [
     {
-      "channel": "PASTE_HYPERLIQUID_LEADERBOARD_CHANNEL_ID",
-      "frequency": "6h",
       "platform": "hyperliquid",
-      "top_n": 10
+      "top_n": 10,
+      "channel": "PASTE_HYPERLIQUID_LEADERBOARD_CHANNEL_ID",
+      "frequency": "6h"
     },
     {
-      "channel": "PASTE_HYPERLIQUID_ETH_CHANNEL_ID",
-      "frequency": "12h",
       "platform": "hyperliquid",
       "ticker": "eth",
-      "top_n": 5
+      "top_n": 5,
+      "channel": "PASTE_HYPERLIQUID_ETH_CHANNEL_ID",
+      "frequency": "12h"
     }
-  ],
-  "portfolio_risk": {
-    "max_drawdown_pct": 25,
-    "max_notional_usd": 0
-  },
-  "status_port": 8099,
-  "strategies": [
-    {
-      "args": [
-        "momentum",
-        "BTC/USDT",
-        "1h"
-      ],
-      "capital": 1000,
-      "id": "momentum-btc",
-      "interval_seconds": 300,
-      "max_drawdown_pct": 60,
-      "open_strategy": {
-        "name": "momentum"
-      },
-      "script": "shared_scripts/check_strategy.py",
-      "type": "spot"
-    },
-    {
-      "args": [
-        "pairs_spread",
-        "BTC/USDT",
-        "1d",
-        "ETH/USDT"
-      ],
-      "capital": 1000,
-      "id": "pairs-btc-eth",
-      "interval_seconds": 86400,
-      "max_drawdown_pct": 60,
-      "open_strategy": {
-        "name": "pairs_spread"
-      },
-      "script": "shared_scripts/check_strategy.py",
-      "type": "spot"
-    },
-    {
-      "args": [
-        "vol_mean_reversion",
-        "BTC",
-        "--platform=deribit"
-      ],
-      "capital": 1000,
-      "id": "deribit-vol-btc",
-      "interval_seconds": 1200,
-      "max_drawdown_pct": 40,
-      "open_strategy": {
-        "name": "vol_mean_reversion"
-      },
-      "script": "shared_scripts/check_options.py",
-      "theta_harvest": {
-        "enabled": true,
-        "min_dte_close": 3,
-        "profit_target_pct": 60,
-        "stop_loss_pct": 200
-      },
-      "type": "options"
-    },
-    {
-      "args": [
-        "momentum",
-        "BTC",
-        "1h",
-        "--mode=paper"
-      ],
-      "capital": 1000,
-      "id": "hl-momentum-btc",
-      "interval_seconds": 300,
-      "max_drawdown_pct": 50,
-      "open_strategy": {
-        "name": "momentum"
-      },
-      "script": "shared_scripts/check_hyperliquid.py",
-      "type": "perps"
-    },
-    {
-      "args": [
-        "amd_ifvg",
-        "BTC",
-        "15m",
-        "--mode=paper"
-      ],
-      "capital": 1000,
-      "id": "hl-amd-btc",
-      "interval_seconds": 900,
-      "max_drawdown_pct": 50,
-      "open_strategy": {
-        "name": "amd_ifvg"
-      },
-      "script": "shared_scripts/check_hyperliquid.py",
-      "type": "perps"
-    }
-  ],
-  "summary_frequency": {
-    "hyperliquid": "every",
-    "options": "every",
-    "spot": "hourly",
-    "topstep": "every"
-  }
+  ]
 }

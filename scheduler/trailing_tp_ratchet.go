@@ -47,6 +47,12 @@ func strategyUsesTrailingTPRatchetClose(sc StrategyConfig) bool {
 // the two in sync. The regime variant broadcasts this same ladder to every
 // classifier label (per-regime group differentiation + per-regime opening trail
 // land in #870).
+//
+// Precondition: the first rung tightens to 1.5×ATR, so a strategy relying on
+// this default must set trailing_stop_atr_mult >= 1.5 — otherwise
+// validateTrailingRatchetInitialTrail rejects it at load (a looser first rung
+// would silently no-op at runtime). The reported bug is fully fixed for trails
+// >= 1.5×ATR; a tighter initial trail still needs an explicit tp_tiers.
 func defaultTrailingRatchetTiers() []trailingRatchetTier {
 	return []trailingRatchetTier{
 		{ATRMultiple: 2.0, CloseFraction: 0, TrailingMultAfter: 1.5},

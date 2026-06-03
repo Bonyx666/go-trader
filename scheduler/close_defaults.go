@@ -80,17 +80,76 @@ func validateUserCloseDefaults(defaults CloseDefaultsMap) []string {
 			errs = append(errs, fmt.Sprintf("user_close_defaults[%q]: not a tp_tiers close evaluator (allowed: %s)", name, strings.Join(closeDefaultsSupportedNames(), ", ")))
 			continue
 		}
-		tp, ok := entry["tp_tiers"]
-		if !ok || tp == nil {
-			errs = append(errs, fmt.Sprintf("user_close_defaults[%q]: missing tp_tiers", name))
-		}
 		for k := range entry {
 			if k != "tp_tiers" {
 				errs = append(errs, fmt.Sprintf("user_close_defaults[%q]: unknown key %q (only tp_tiers is allowed)", name, k))
 			}
 		}
+		tp, ok := entry["tp_tiers"]
+		if !ok || tp == nil {
+			errs = append(errs, fmt.Sprintf("user_close_defaults[%q]: missing tp_tiers", name))
+			continue
+		}
+		// Deep-validate the ladder here so a malformed user default (empty list,
+		// wrong type, non-monotonic ratchet tiers) is attributed to
+		// user_close_defaults — not to the strategy it later injects into. An
+		// empty tp_tiers is rejected loudly: it would otherwise inject `[]` and
+		// silently suppress the system default (runtime resolves to zero tiers).
+		errs = append(errs, validateUserCloseDefaultTiers(name, tp)...)
 	}
 	return errs
+}
+
+// validateUserCloseDefaultTiers validates a user_close_defaults tp_tiers value
+// (scalar list, or regime-keyed map for the *_regime ratchet) with errors
+// attributed to the user_close_defaults block. Ratchet ladders also get the
+// context-free monotonicity check; the regime-exhaustiveness and initial-trail
+// checks stay per-strategy (they need the consuming strategy's classifier and
+// trailing_stop_atr_mult).
+func validateUserCloseDefaultTiers(name string, tp interface{}) []string {
+	ctx := fmt.Sprintf("user_close_defaults[%q].tp_tiers", name)
+	isRatchet := isTrailingTPRatchetCloseName(name)
+	switch v := tp.(type) {
+	case []interface{}:
+		if len(v) == 0 {
+			return []string{ctx + ": must not be empty (omit the entry to use the system default)"}
+		}
+		if isRatchet {
+			tiers, errs := parseTrailingRatchetTierList(v, ctx)
+			return append(errs, validateTrailingRatchetTierMonotonicity(tiers, ctx)...)
+		}
+		return nil
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return []string{ctx + ": regime map must not be empty (omit the entry to use the system default)"}
+		}
+		var errs []string
+		labels := make([]string, 0, len(v))
+		for label := range v {
+			labels = append(labels, label)
+		}
+		sort.Strings(labels)
+		for _, label := range labels {
+			sub := ctx + "." + label
+			list, ok := v[label].([]interface{})
+			if !ok {
+				errs = append(errs, sub+": must be a tier list")
+				continue
+			}
+			if len(list) == 0 {
+				errs = append(errs, sub+": must not be empty")
+				continue
+			}
+			if isRatchet {
+				tiers, subErrs := parseTrailingRatchetTierList(list, sub)
+				errs = append(errs, subErrs...)
+				errs = append(errs, validateTrailingRatchetTierMonotonicity(tiers, sub)...)
+			}
+		}
+		return errs
+	default:
+		return []string{ctx + ": must be a tier list or regime-keyed object"}
+	}
 }
 
 // applyUserCloseDefaultsToRef injects the user_close_defaults tp_tiers for ref's

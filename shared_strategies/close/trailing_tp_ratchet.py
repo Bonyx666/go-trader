@@ -21,7 +21,9 @@ from regime_atr import CANONICAL_TREND_REGIME_LABELS
 # mirrors the Go single source of truth defaultTrailingRatchetTiers() in
 # scheduler/trailing_tp_ratchet.go — keep the two in sync. The regime variant
 # broadcasts this same ladder across every classifier label (per-regime
-# differentiation lands in #870).
+# differentiation lands in #870). Precondition: the first rung tightens to
+# 1.5xATR, so a strategy using this default must set trailing_stop_atr_mult >=
+# 1.5 (else the Go loader rejects it via validateTrailingRatchetInitialTrail).
 DEFAULT_RATCHET_TIERS = [
     {"atr_multiple": 2.0, "trailing_mult_after": 1.5, "close_fraction": 0.0},
     {"atr_multiple": 2.5, "trailing_mult_after": 1.0, "close_fraction": 0.0},

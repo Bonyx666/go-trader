@@ -49,8 +49,14 @@ func TestApplyUserCloseDefaultsToRef_NoMatchFallsThrough(t *testing.T) {
 }
 
 func TestValidateUserCloseDefaults(t *testing.T) {
-	if errs := validateUserCloseDefaults(CloseDefaultsMap{"tiered_tp_atr": {"tp_tiers": []interface{}{}}}); len(errs) != 0 {
-		t.Fatalf("structurally valid entry should pass, got: %v", errs)
+	validTiered := []interface{}{map[string]interface{}{"atr_multiple": 1.0, "close_fraction": 0.5}}
+	if errs := validateUserCloseDefaults(CloseDefaultsMap{"tiered_tp_atr": {"tp_tiers": validTiered}}); len(errs) != 0 {
+		t.Fatalf("a non-empty entry should pass, got: %v", errs)
+	}
+	// Non-monotonic ratchet ladder: trail loosens 1.0 -> 2.0 across rungs.
+	nonMonotonicRatchet := []interface{}{
+		map[string]interface{}{"atr_multiple": 1.0, "trailing_mult_after": 1.0, "close_fraction": 0.0},
+		map[string]interface{}{"atr_multiple": 2.0, "trailing_mult_after": 2.0, "close_fraction": 0.0},
 	}
 	cases := []struct {
 		name     string
@@ -59,7 +65,13 @@ func TestValidateUserCloseDefaults(t *testing.T) {
 	}{
 		{"unknown evaluator", CloseDefaultsMap{"bogus_close": {"tp_tiers": []interface{}{}}}, "not a tp_tiers close evaluator"},
 		{"missing tp_tiers", CloseDefaultsMap{"tiered_tp_atr": {}}, "missing tp_tiers"},
-		{"stray key", CloseDefaultsMap{"tiered_tp_atr": {"tp_tiers": []interface{}{}, "foo": 1}}, "unknown key"},
+		{"stray key", CloseDefaultsMap{"tiered_tp_atr": {"tp_tiers": validTiered, "foo": 1}}, "unknown key"},
+		// empty tp_tiers is rejected (would inject [] and silently suppress the system default).
+		{"empty list", CloseDefaultsMap{"trailing_tp_ratchet": {"tp_tiers": []interface{}{}}}, "must not be empty"},
+		{"empty regime map", CloseDefaultsMap{"trailing_tp_ratchet_regime": {"tp_tiers": map[string]interface{}{}}}, "must not be empty"},
+		{"wrong type", CloseDefaultsMap{"tiered_tp_atr": {"tp_tiers": 42}}, "must be a tier list or regime-keyed object"},
+		// non-monotonic ratchet ladder attributed to user_close_defaults, not the strategy.
+		{"non-monotonic ratchet attributed", CloseDefaultsMap{"trailing_tp_ratchet": {"tp_tiers": nonMonotonicRatchet}}, "user_close_defaults[\"trailing_tp_ratchet\"].tp_tiers"},
 		// the dynamic unified-regime evaluator is trend_regime-shaped (no tp_tiers) and excluded.
 		{"dynamic excluded", CloseDefaultsMap{"tiered_tp_atr_live_regime_dynamic": {"tp_tiers": []interface{}{}}}, "not a tp_tiers close evaluator"},
 		// regime tiered-ATR override is deferred to #870 (use_defaults baseline interaction).
