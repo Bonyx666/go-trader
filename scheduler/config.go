@@ -22,11 +22,11 @@ type DiscordConfig struct {
 	LeaderboardTopN    int               `json:"leaderboard_top_n,omitempty"`    // number of entries shown in leaderboard messages (default 5)
 	LeaderboardChannel string            `json:"leaderboard_channel,omitempty"`  // dedicated Discord channel ID for leaderboard posts; when set, all leaderboards route here instead of being broadcast across platform channels
 	EphemeralReplies   bool              `json:"ephemeral_replies,omitempty"`    // when true, read-only slash-command replies (/status, /pnl, etc.) are ephemeral (visible only to the invoker); default false (public in channel)
-	ReportRepo         string            `json:"report_repo,omitempty"`          // GitHub repo (owner/name) the /report command files issues against; defaults to richkuo/go-trader
-	ReportGitHubToken  string            `json:"report_github_token,omitempty"`  // GitHub token for /report; prefer the GO_TRADER_GITHUB_TOKEN / GITHUB_TOKEN env var over storing it here
+	ReportRepo         string            `json:"report_repo,omitempty"`          // GitHub repo (owner/name) the /report-an-issue command files issues against; defaults to richkuo/go-trader
+	ReportGitHubToken  string            `json:"report_github_token,omitempty"`  // GitHub token for /report-an-issue; prefer the GO_TRADER_GITHUB_TOKEN / GITHUB_TOKEN env var over storing it here
 }
 
-// reportRepo returns the owner/name repo for the /report command, defaulting to
+// reportRepo returns the owner/name repo for the /report-an-issue command, defaulting to
 // this project's repo when unset.
 func (c DiscordConfig) reportRepo() string {
 	if r := strings.TrimSpace(c.ReportRepo); r != "" {
@@ -35,7 +35,7 @@ func (c DiscordConfig) reportRepo() string {
 	return defaultReportRepo
 }
 
-// reportToken resolves the GitHub token for /report. Env vars win over the config
+// reportToken resolves the GitHub token for /report-an-issue. Env vars win over the config
 // field so the secret can live in /opt/go-trader/.env rather than the config JSON.
 func (c DiscordConfig) reportToken() string {
 	if t := strings.TrimSpace(os.Getenv("GO_TRADER_GITHUB_TOKEN")); t != "" {
