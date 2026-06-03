@@ -53,11 +53,13 @@ type Position struct {
 	// most recent entry leg (open or add), the watermark for add_spacing_atr; 0 =
 	// never stamped (pre-#873 positions fall back to AvgCost). AddedNotionalUSD is
 	// the cumulative USD notional added across all add legs (gated by
-	// scale_in.max_added_notional_usd). ScaleInResizePending is a transient,
-	// non-persisted flag set by applyScaleIn so the next HL-live protection sync
-	// force-replaces SL + un-cleared TP tiers at the grown size; cleared after
-	// the sync. The cleared-tier watermark (SLAdjustedTiersProcessed/TPArmedTiers)
-	// is never reset by an add.
+	// scale_in.max_added_notional_usd). ScaleInResizePending is set by applyScaleIn
+	// so the next HL-live protection sync force-replaces SL + un-cleared TP tiers
+	// at the grown size; cleared after the sync. It is PERSISTED (positions-table
+	// scale_in_resize_pending) so a restart between an add and the deferred
+	// trailing-SL re-size still grows the on-chain stop next cycle (#873; the wire
+	// JSON omits it). The cleared-tier watermark (SLAdjustedTiersProcessed/
+	// TPArmedTiers) is never reset by an add.
 	ScaleInCount     int     `json:"scale_in_count,omitempty"`
 	LastAddPrice     float64 `json:"last_add_price,omitempty"` // fill price of the most recent ADD leg (stamped only by applyScaleIn; the add_spacing_atr watermark, falls back to AvgCost when 0)
 	AddedNotionalUSD float64 `json:"added_notional_usd,omitempty"`

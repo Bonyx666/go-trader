@@ -1543,6 +1543,17 @@ func validateConfig(cfg *Config, skipLiveCredentialChecks bool) error {
 			if sc.Platform != "hyperliquid" {
 				errs = append(errs, fmt.Sprintf("%s: allow_scale_in is only supported on hyperliquid (got platform %q)", prefix, sc.Platform))
 			}
+			// #873 (from #875): on HL LIVE perps the on-chain SL must be one the
+			// scale-in resize path can grow — an ATR/regime fixed SL (sync
+			// force-replace) or a trailing SL (walker forceResize). A static
+			// scalar SL (stop_loss_pct / stop_loss_margin_pct / the max_drawdown
+			// fallback) is placed once at open with no resize path, so after an
+			// add it would silently under-cover the grown position. Reject it up
+			// front rather than leave a naked-increment SL at runtime. Paper
+			// places no on-chain orders; manual auto-configures an ATR SL.
+			if sc.Type == "perps" && sc.Platform == "hyperliquid" && hyperliquidIsLive(sc.Args) && !scaleInLiveProtectionResizable(sc) {
+				errs = append(errs, fmt.Sprintf("%s: allow_scale_in on live perps requires an ATR/regime or trailing stop-loss that can be re-sized after an add — stop_loss_pct/stop_loss_margin_pct and the max_drawdown fallback cannot (set stop_loss_atr_mult, stop_loss_atr_regime, or a trailing stop)", prefix))
+			}
 		}
 		if sc.ScaleIn != nil {
 			if !sc.AllowScaleIn {

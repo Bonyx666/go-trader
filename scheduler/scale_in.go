@@ -65,6 +65,36 @@ func applyScaleIn(pos *Position, addQty, addPrice float64) {
 	pos.ScaleInResizePending = true
 }
 
+// scaleInLiveProtectionResizable reports whether sc's HL stop-loss owner can be
+// grown after an add (#873, guard adopted from #875). The two resize paths are:
+//   - the protection sync's force-replace, which fires only for an ATR/regime
+//     fixed SL or a close that arms an ATR SL (EffectiveStopLossPct defers to 0
+//     for those), and re-sizes un-cleared TP tiers too; and
+//   - the trailing walker's forceResize, for any trailing SL.
+//
+// A static scalar SL — stop_loss_pct, stop_loss_margin_pct, or the implicit
+// max_drawdown fallback — is placed once at open with no resize path, so an add
+// would leave it under-covering the grown position. Those make
+// EffectiveStopLossPct return a positive pct while no trailing owner is present.
+func scaleInLiveProtectionResizable(sc StrategyConfig) bool {
+	trailing := (sc.TrailingStopPct != nil && *sc.TrailingStopPct > 0) ||
+		(sc.TrailingStopATRMult != nil && *sc.TrailingStopATRMult > 0) ||
+		(sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero()) ||
+		strategyUsesTrailingTPRatchetClose(sc)
+	if trailing {
+		return true
+	}
+	// A positive effective pct here (trailing already excluded) means the active
+	// owner is a static scalar SL with no resize path.
+	if EffectiveStopLossPct(sc) > 0 {
+		return false
+	}
+	// EffectiveStopLossPct == 0 with no trailing owner means an ATR/regime fixed
+	// or close-owned ATR SL (deferred arming) — the sync force-replaces it — or
+	// genuinely no SL, in which case there is nothing to under-cover.
+	return true
+}
+
 // scaleInSnapshot is the read-only position state perpsScaleInDecision needs.
 // Captured under RLock in Phase 1 so the decision can be computed once and
 // consumed by both the skip-reason gate (Phase 3) and the state-apply (Phase 4)
