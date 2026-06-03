@@ -126,3 +126,97 @@ func formatStatusResponse(state *AppState, prices map[string]float64) string {
 	}
 	return formatStatusLine(cash, posCount, value, trades, regime)
 }
+
+// formatPositionsResponse lists open positions grouped by platform. Call under RLock.
+func formatPositionsResponse(state *AppState, prices map[string]float64) string {
+	lines := map[string][]string{} // platform -> position lines
+	platforms := []string{}
+	for _, id := range sortedAppStateIDs(state) {
+		s := state.Strategies[id]
+		syms := make([]string, 0, len(s.Positions))
+		for sym := range s.Positions {
+			syms = append(syms, sym)
+		}
+		sort.Strings(syms)
+		for _, sym := range syms {
+			p := s.Positions[sym]
+			if p.Quantity == 0 {
+				continue
+			}
+			price := prices[sym]
+			if price == 0 {
+				price = p.AvgCost
+			}
+			mv := price * p.Quantity * positionMultiplier(p)
+			plat := strategyPlatformLabel(s)
+			if _, ok := lines[plat]; !ok {
+				platforms = append(platforms, plat)
+			}
+			lines[plat] = append(lines[plat], fmt.Sprintf(
+				"  %s %s %.4f @ $%.2f (mv $%.2f) [%s]", sym, p.Side, p.Quantity, p.AvgCost, mv, id))
+		}
+	}
+	if len(platforms) == 0 {
+		return "No open positions."
+	}
+	sort.Strings(platforms)
+	var sb strings.Builder
+	sb.WriteString("**Open positions**\n")
+	for _, plat := range platforms {
+		sb.WriteString("__" + plat + "__\n")
+		sb.WriteString(strings.Join(lines[plat], "\n"))
+		sb.WriteString("\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// formatPnLResponse reports total / per-platform / per-strategy P&L. Call under RLock.
+func formatPnLResponse(state *AppState, prices map[string]float64, lifetime map[string]LifetimeTradeStats) string {
+	type agg struct{ value, capital float64 }
+	byPlatform := map[string]*agg{}
+	platforms := []string{}
+	var totVal, totCap float64
+	var perStrat []string
+	for _, id := range sortedAppStateIDs(state) {
+		s := state.Strategies[id]
+		pv := PortfolioValue(s, prices)
+		cap := s.InitialCapital
+		pnl := pv - cap
+		pnlPct := 0.0
+		if cap > 0 {
+			pnlPct = pnl / cap * 100
+		}
+		totVal += pv
+		totCap += cap
+		plat := strategyPlatformLabel(s)
+		if byPlatform[plat] == nil {
+			byPlatform[plat] = &agg{}
+			platforms = append(platforms, plat)
+		}
+		byPlatform[plat].value += pv
+		byPlatform[plat].capital += cap
+		perStrat = append(perStrat, fmt.Sprintf("  %s: $%+.2f (%+.2f%%)", id, pnl, pnlPct))
+	}
+	sort.Strings(platforms)
+	var sb strings.Builder
+	sb.WriteString("**P&L**\n")
+	totPnL := totVal - totCap
+	totPct := 0.0
+	if totCap > 0 {
+		totPct = totPnL / totCap * 100
+	}
+	sb.WriteString(fmt.Sprintf("Total: $%+.2f (%+.2f%%) — value $%.2f / capital $%.2f\n", totPnL, totPct, totVal, totCap))
+	sb.WriteString("__By platform__\n")
+	for _, plat := range platforms {
+		a := byPlatform[plat]
+		pnl := a.value - a.capital
+		pct := 0.0
+		if a.capital > 0 {
+			pct = pnl / a.capital * 100
+		}
+		sb.WriteString(fmt.Sprintf("  %s: $%+.2f (%+.2f%%)\n", plat, pnl, pct))
+	}
+	sb.WriteString("__By strategy__\n")
+	sb.WriteString(strings.Join(perStrat, "\n"))
+	return strings.TrimRight(sb.String(), "\n")
+}

@@ -84,3 +84,35 @@ func TestFormatStatusResponse(t *testing.T) {
 		t.Errorf("expected regime in status, got: %s", got)
 	}
 }
+
+func testPnLState() *AppState {
+	return &AppState{Strategies: map[string]*StrategyState{
+		"hl-a": {ID: "hl-a", Platform: "hyperliquid", Cash: 0, InitialCapital: 50,
+			Positions: map[string]*Position{"BTC": {Symbol: "BTC", Quantity: 1, AvgCost: 50, Side: "long"}}},
+		"hl-b": {ID: "hl-b", Platform: "hyperliquid", Cash: 50, InitialCapital: 50,
+			Positions: map[string]*Position{}},
+	}}
+}
+
+func TestFormatPositionsResponse(t *testing.T) {
+	empty := formatPositionsResponse(&AppState{Strategies: map[string]*StrategyState{}}, nil)
+	if !strings.Contains(empty, "No open positions") {
+		t.Errorf("expected empty message, got: %s", empty)
+	}
+
+	got := formatPositionsResponse(testPnLState(), map[string]float64{"BTC": 60})
+	if !strings.Contains(got, "BTC") || !strings.Contains(got, "hl-a") {
+		t.Errorf("expected BTC position owned by hl-a, got: %s", got)
+	}
+}
+
+func TestFormatPnLResponse(t *testing.T) {
+	// hl-a: pv = 1*60 = 60, cap 50 -> +10 (+20%). hl-b: pv = 50, cap 50 -> 0.
+	got := formatPnLResponse(testPnLState(), map[string]float64{"BTC": 60}, nil)
+	if !strings.Contains(got, "+10.00") || !strings.Contains(got, "+20.00%") {
+		t.Errorf("expected hl-a pnl +10 (+20%%), got: %s", got)
+	}
+	if !strings.Contains(got, "Total") {
+		t.Errorf("expected a Total line, got: %s", got)
+	}
+}
