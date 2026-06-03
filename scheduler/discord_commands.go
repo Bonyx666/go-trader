@@ -302,3 +302,45 @@ func formatCorrelationResponse(snap *CorrelationSnapshot) string {
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
+
+// formatLeaderboardResponse ranks all strategies by PnL% (descending), top N.
+// Reuses newLeaderboardEntry for per-strategy metrics. Call under RLock.
+func formatLeaderboardResponse(cfg *Config, state *AppState, prices map[string]float64, lifetime map[string]LifetimeTradeStats, topN int) string {
+	if topN <= 0 {
+		topN = 5
+	}
+	var entries []LeaderboardEntry
+	for _, sc := range cfg.Strategies {
+		ss := state.Strategies[sc.ID]
+		if ss == nil {
+			continue
+		}
+		pv := PortfolioValue(ss, prices)
+		initCap := EffectiveInitialCapital(sc, ss)
+		pnl := pv - initCap
+		pnlPct := 0.0
+		if initCap > 0 {
+			pnlPct = pnl / initCap * 100
+		}
+		entries = append(entries, newLeaderboardEntry(sc, ss, pv, initCap, pnl, pnlPct, nil, lifetime, cfg.IntervalSeconds))
+	}
+	if len(entries) == 0 {
+		return "No strategies to rank."
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].PnLPct != entries[j].PnLPct {
+			return entries[i].PnLPct > entries[j].PnLPct
+		}
+		return entries[i].ID < entries[j].ID
+	})
+	if topN > len(entries) {
+		topN = len(entries)
+	}
+	var sb strings.Builder
+	sb.WriteString("**Leaderboard (by PnL%)**\n")
+	for i := 0; i < topN; i++ {
+		e := entries[i]
+		sb.WriteString(fmt.Sprintf("  %d. %s — %+.2f%% ($%+.2f)\n", i+1, e.ID, e.PnLPct, e.PnL))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}

@@ -148,6 +148,24 @@ func TestFormatDeadStrategiesResponse(t *testing.T) {
 	}
 }
 
+func TestFormatLeaderboardResponse(t *testing.T) {
+	cfg := &Config{
+		IntervalSeconds: 3600,
+		Strategies: []StrategyConfig{
+			{ID: "hl-a", Platform: "hyperliquid"},
+			{ID: "hl-b", Platform: "hyperliquid"},
+		},
+	}
+	state := testPnLState() // hl-a +20%, hl-b 0%
+	got := formatLeaderboardResponse(cfg, state, map[string]float64{"BTC": 60}, nil, 5)
+	// hl-a should rank above hl-b.
+	ai := strings.Index(got, "hl-a")
+	bi := strings.Index(got, "hl-b")
+	if ai < 0 || bi < 0 || ai > bi {
+		t.Errorf("expected hl-a ranked above hl-b, got: %s", got)
+	}
+}
+
 func TestFormatCorrelationResponse(t *testing.T) {
 	if got := formatCorrelationResponse(nil); !strings.Contains(got, "No correlation") {
 		t.Errorf("expected nil-snapshot message, got: %s", got)
