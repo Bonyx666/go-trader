@@ -1484,7 +1484,7 @@ func TestCollectPositions_TieredTPATR_Long(t *testing.T) {
 	if !strings.Contains(lines[0], "| ATR: $1,000.00") {
 		t.Errorf("expected ATR fragment, got: %s", lines[0])
 	}
-	if !strings.Contains(lines[0], "| TP1: $64,500.00 (+1.6%) (1x) | TP2: $65,500.00 (+3.1%) (2x)") {
+	if !strings.Contains(lines[0], "| TP1: $65,000.00 (+2.4%) (1.5x) | TP2: $66,500.00 (+4.7%) (3x)") {
 		t.Errorf("expected tiered TP fragments for long, got: %s", lines[0])
 	}
 }
@@ -1503,7 +1503,7 @@ func TestCollectPositions_TieredTPATR_Short(t *testing.T) {
 	if !strings.Contains(lines[0], "| ATR: $1,000.00") {
 		t.Errorf("expected ATR fragment, got: %s", lines[0])
 	}
-	if !strings.Contains(lines[0], "| TP1: $62,500.00 (+1.6%) (1x) | TP2: $61,500.00 (+3.1%) (2x)") {
+	if !strings.Contains(lines[0], "| TP1: $62,000.00 (+2.4%) (1.5x) | TP2: $60,500.00 (+4.7%) (3x)") {
 		t.Errorf("expected tiered TP fragments for short, got: %s", lines[0])
 	}
 }
@@ -1527,7 +1527,7 @@ func TestCollectPositions_TieredTPATRLive_Long(t *testing.T) {
 	if !strings.Contains(lines[0], "| ATR: $1,000.00") {
 		t.Errorf("expected ATR fragment, got: %s", lines[0])
 	}
-	want := "| TP1: $64,500.00 (+1.6%) (1x) | TP2: $65,500.00 (+3.1%) (2x)"
+	want := "| TP1: $65,000.00 (+2.4%) (1.5x) | TP2: $66,500.00 (+4.7%) (3x)"
 	if !strings.Contains(lines[0], want) {
 		t.Errorf("expected tiered TP fragments for tiered_tp_atr_live long, got: %s", lines[0])
 	}
@@ -1669,10 +1669,11 @@ func TestCollectPositions_TieredTPATR_FilledTierMarked(t *testing.T) {
 		},
 	}
 	lines := collectPositions(sc, ss, map[string]float64{"BTC/USDT": 63500})
-	if !strings.Contains(lines[0], "| TP1: $64,500.00 (1x) ✓") {
+	// #870: default ladder retuned to 1.5×/3×/5×.
+	if !strings.Contains(lines[0], "| TP1: $65,000.00 (1.5x) ✓") {
 		t.Errorf("expected TP1 marked filled, got: %s", lines[0])
 	}
-	if !strings.Contains(lines[0], "| TP2: $65,500.00 (+3.1%) (2x)") {
+	if !strings.Contains(lines[0], "| TP2: $66,500.00 (+4.7%) (3x)") {
 		t.Errorf("expected TP2 still pending, got: %s", lines[0])
 	}
 }
@@ -1702,7 +1703,8 @@ func TestCollectPositions_TieredTPATR_NoFillBeforeProtectionSync(t *testing.T) {
 	if strings.Contains(lines[0], "✓") {
 		t.Errorf("filled marker leaked before any TP fill, got: %s", lines[0])
 	}
-	if !strings.Contains(lines[0], "| TP1: $64,500.00 (+1.6%) (1x) | TP2: $65,500.00 (+3.1%) (2x)") {
+	// #870: default ladder retuned to 1.5×/3×/5×.
+	if !strings.Contains(lines[0], "| TP1: $65,000.00 (+2.4%) (1.5x) | TP2: $66,500.00 (+4.7%) (3x)") {
 		t.Errorf("expected both tiers pending, got: %s", lines[0])
 	}
 }
@@ -1730,7 +1732,8 @@ func TestCollectPositions_TieredTPATRRegime_StampedRegime(t *testing.T) {
 		},
 	}
 	lines := collectPositions(sc, ss, map[string]float64{"BTC/USDT": 63500})
-	if !strings.Contains(lines[0], "| TP1: $65,500.00") || !strings.Contains(lines[0], "| TP2: $67,500.00") {
+	// #870: trending_up → choppy group (1.5×/3×/5× ATR).
+	if !strings.Contains(lines[0], "| TP1: $65,000.00") || !strings.Contains(lines[0], "| TP2: $66,500.00") {
 		t.Errorf("expected regime-resolved TP prices, got: %s", lines[0])
 	}
 }
@@ -2353,11 +2356,11 @@ func TestFormatTradeDM_OpenWithATRAndTP(t *testing.T) {
 	if !strings.Contains(msg, "ATR: $1,000.00") {
 		t.Errorf("expected 'ATR: $1,000.00' in DM, got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "TP1: $64,500.00") {
-		t.Errorf("expected 'TP1: $64,500.00' in DM, got:\n%s", msg)
+	if !strings.Contains(msg, "TP1: $65,000.00") {
+		t.Errorf("expected 'TP1: $65,000.00' in DM, got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "TP2: $65,500.00") {
-		t.Errorf("expected 'TP2: $65,500.00' in DM, got:\n%s", msg)
+	if !strings.Contains(msg, "TP2: $66,500.00") {
+		t.Errorf("expected 'TP2: $66,500.00' in DM, got:\n%s", msg)
 	}
 }
 
@@ -2619,11 +2622,11 @@ func TestFormatTradeDM_TPATRMultipliers(t *testing.T) {
 		Details:  "Open long 0.010000 @ $63500.00",
 	}
 	msg := FormatTradeDM(sc, trade, "live")
-	if !strings.Contains(msg, "TP1: $64,500.00 (1x)") {
-		t.Errorf("expected TP1 with 1× multiplier, got:\n%s", msg)
+	if !strings.Contains(msg, "TP1: $65,000.00 (1.5x)") {
+		t.Errorf("expected TP1 with 1.5× multiplier, got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "TP2: $65,500.00 (2x)") {
-		t.Errorf("expected TP2 with 2× multiplier, got:\n%s", msg)
+	if !strings.Contains(msg, "TP2: $66,500.00 (3x)") {
+		t.Errorf("expected TP2 with 3× multiplier, got:\n%s", msg)
 	}
 }
 
@@ -2682,7 +2685,8 @@ func TestFormatTradeDM_TieredTPATRRegime(t *testing.T) {
 		Details:  "Open long 0.010000 @ $63500.00",
 	}
 	msg := FormatTradeDM(sc, trade, "live")
-	if !strings.Contains(msg, "TP1: $65,500.00") || !strings.Contains(msg, "TP2: $67,500.00") {
+	// #870: trending_up → choppy group (1.5×/3×/5× ATR).
+	if !strings.Contains(msg, "TP1: $65,000.00") || !strings.Contains(msg, "TP2: $66,500.00") {
 		t.Errorf("expected regime-resolved TP lines in DM, got:\n%s", msg)
 	}
 }
@@ -2750,7 +2754,7 @@ func TestFormatTradeDMPlain_IncludesOID(t *testing.T) {
 	if !strings.Contains(msg, "SL: $2,285.00 (-0.7%) (1x)") {
 		t.Errorf("expected SL with mult on Telegram DM, got:\n%s", msg)
 	}
-	if !strings.Contains(msg, "TP1: $2,315.00 (1x)") {
+	if !strings.Contains(msg, "TP1: $2,322.50 (1.5x)") {
 		t.Errorf("expected TP1 with mult on Telegram DM, got:\n%s", msg)
 	}
 }

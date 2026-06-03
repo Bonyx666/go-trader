@@ -71,7 +71,7 @@ def test_tiered_tp_atr_partial_then_full_close():
     bt = Backtester(
         initial_capital=1000, commission_pct=0, slippage_pct=0,
         close_strategies=[
-            {"name": "tiered_tp_atr", "params": {"tiers": [
+            {"name": "tiered_tp_atr", "params": {"tp_tiers": [
             {"atr_multiple": 1.0, "close_fraction": 0.5},
             {"atr_multiple": 2.0, "close_fraction": 1.0},
         ]}},
@@ -102,7 +102,7 @@ def test_tiered_tp_atr_live_uses_live_atr_from_market():
         close_strategies=[
             {"name": "tiered_tp_atr_live", "params": {
             "atr_source": "live",
-            "tiers": [
+            "tp_tiers": [
                 {"atr_multiple": 1.0, "close_fraction": 0.5},
                 {"atr_multiple": 2.0, "close_fraction": 1.0},
             ],
@@ -128,7 +128,7 @@ def test_max_close_fraction_wins_between_two_evaluators():
         initial_capital=1000, commission_pct=0, slippage_pct=0,
         close_strategies=[
             {"name": "tp_at_pct", "params": {"pct": 0.02}},
-            {"name": "tiered_tp_pct", "params": {"tiers": [
+            {"name": "tiered_tp_pct", "params": {"tp_tiers": [
                 {"profit_pct": 0.05, "close_fraction": 1.0},
             ]}},
         ],
@@ -198,7 +198,7 @@ def test_starting_long_seed_with_entry_atr_lets_tiered_tp_atr_fire():
     bt = Backtester(
         initial_capital=1000, commission_pct=0, slippage_pct=0,
         close_strategies=[
-            {"name": "tiered_tp_atr", "params": {"tiers": [
+            {"name": "tiered_tp_atr", "params": {"tp_tiers": [
             {"atr_multiple": 1.0, "close_fraction": 0.5},
             {"atr_multiple": 2.0, "close_fraction": 1.0},
         ]}},
@@ -292,7 +292,14 @@ def test_trailing_tp_ratchet_regime_uses_open_time_regime():
     }
     bt = Backtester(
         initial_capital=1000, commission_pct=0, slippage_pct=0,
-        trailing_stop_atr_mult=3.0,
+        # #870: the regime variant's opening trail / SL owner is the per-regime
+        # trailing_stop_atr_regime block (scalar trailing_stop_atr_mult rejected).
+        # Open 3.0 preserves the prior initial trail distance.
+        trailing_stop_atr_regime={"trend_regime": {
+            "ranging": {"atr_multiple": 3.0},
+            "trending_up": {"atr_multiple": 3.0},
+            "trending_down": {"atr_multiple": 3.0},
+        }},
         close_strategies=[close_ref],
     )
     result = bt.run(df, save=False)

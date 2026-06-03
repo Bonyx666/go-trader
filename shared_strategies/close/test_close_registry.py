@@ -62,31 +62,33 @@ def test_tp_at_pct_deprecated_shim(registry):
 
 
 def test_tiered_tp_pct_closes_only_unfilled_tier_amount(registry):
+    # #870: default ladder is 0.01/0.02/0.03/0.04 → 0.25/0.50/0.75/1.00.
     first = registry.evaluate(
         "tiered_tp_pct",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1},
-        {"mark_price": 103},
+        {"mark_price": 102},  # +2% → cumulative target 0.50
         {},
     )
     already_taken = registry.evaluate(
         "tiered_tp_pct",
         {"side": "long", "avg_cost": 100, "current_quantity": 0.5, "initial_quantity": 1},
-        {"mark_price": 103},
+        {"mark_price": 102},
         {},
     )
     final = registry.evaluate(
         "tiered_tp_pct",
         {"side": "long", "avg_cost": 100, "current_quantity": 0.5, "initial_quantity": 1},
-        {"mark_price": 106},
+        {"mark_price": 104},  # +4% → cumulative target 1.00
         {},
     )
 
-    assert first == {"close_fraction": 0.5, "reason": "tiered_tp_pct:0.03"}
+    assert first == {"close_fraction": 0.5, "reason": "tiered_tp_pct:0.02"}
     assert already_taken == {"close_fraction": 0.0, "reason": "noop:already_taken"}
-    assert final == {"close_fraction": 1.0, "reason": "tiered_tp_pct:0.06"}
+    assert final == {"close_fraction": 1.0, "reason": "tiered_tp_pct:0.04"}
 
 
 def test_tiered_tp_atr_uses_entry_atr_multiple(registry):
+    # #870: default ladder is 1.5×/3×/5× → 40%/80%/100%.
     missing_atr = registry.evaluate(
         "tiered_tp_atr",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1},
@@ -96,34 +98,34 @@ def test_tiered_tp_atr_uses_entry_atr_multiple(registry):
     hit = registry.evaluate(
         "tiered_tp_atr",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1, "entry_atr": 2},
-        {"mark_price": 104},
+        {"mark_price": 110},  # +10 = 5 ATR → final tier, full close
         {},
     )
 
     assert missing_atr == {"close_fraction": 0.0, "reason": "noop:missing_entry_atr"}
-    assert hit == {"close_fraction": 1.0, "reason": "tiered_tp_atr:2"}
+    assert hit == {"close_fraction": 1.0, "reason": "tiered_tp_atr:5"}
 
 
 def test_tiered_tp_atr_live_uses_market_atr(registry):
-    # Live ATR (3.0) means 104 mark = 1.33 ATR profit, hits the 1.0x tier (50%).
+    # #870: Live ATR (3.0) means 105 mark = 1.67 ATR profit, hits the 1.5x tier (40%).
     live_hit = registry.evaluate(
         "tiered_tp_atr_live",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1, "entry_atr": 2},
-        {"mark_price": 104, "atr": 3},
+        {"mark_price": 105, "atr": 3},
         {},
     )
-    assert live_hit == {"close_fraction": 0.5, "reason": "tiered_tp_atr_live:live:1"}
+    assert live_hit == {"close_fraction": 0.4, "reason": "tiered_tp_atr_live:live:1.5"}
 
 
 def test_tiered_tp_atr_live_falls_back_to_entry_atr(registry):
-    # Live ATR missing -> falls back to entry_atr (2.0); 104 mark = 2 ATR -> 1.0x and 2.0x both hit.
+    # #870: Live ATR missing -> falls back to entry_atr (2.0); 110 mark = 5 ATR -> all tiers hit.
     fallback = registry.evaluate(
         "tiered_tp_atr_live",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1, "entry_atr": 2},
-        {"mark_price": 104},
+        {"mark_price": 110},
         {},
     )
-    assert fallback == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:entry_fallback:2"}
+    assert fallback == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:entry_fallback:5"}
 
 
 def test_tiered_tp_atr_live_zero_live_atr_falls_back(registry):
@@ -149,24 +151,25 @@ def test_tiered_tp_atr_live_missing_all_atr_noop(registry):
 
 def test_tiered_tp_atr_live_entry_source_ignores_market_atr(registry):
     # atr_source=entry must use entry_atr even when market.atr is present.
+    # #870: mark 110 = 5 ATR on entry_atr=2 → final tier, full close.
     result = registry.evaluate(
         "tiered_tp_atr_live",
         {"side": "long", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1, "entry_atr": 2},
-        {"mark_price": 104, "atr": 10},
+        {"mark_price": 110, "atr": 10},
         {"atr_source": "entry"},
     )
-    assert result == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:entry:2"}
+    assert result == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:entry:5"}
 
 
 def test_tiered_tp_atr_live_short_side(registry):
     result = registry.evaluate(
         "tiered_tp_atr_live",
         {"side": "short", "avg_cost": 100, "current_quantity": 1, "initial_quantity": 1, "entry_atr": 5},
-        {"mark_price": 96, "atr": 2},
+        {"mark_price": 90, "atr": 2},
         {},
     )
-    # profit_distance = 4, atr=2 -> 2.0 atr_profit -> hits both tiers, full close.
-    assert result == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:live:2"}
+    # #870: profit_distance = 10, atr=2 -> 5.0 atr_profit -> hits all tiers, full close.
+    assert result == {"close_fraction": 1.0, "reason": "tiered_tp_atr_live:live:5"}
 
 
 def test_market_atr_wiring_end_to_end(registry):
@@ -201,9 +204,9 @@ def test_market_atr_wiring_end_to_end(registry):
     if atr_value > 0:
         market_ctx["atr"] = atr_value
 
-    # Mark moves $4 above avg_cost; with live ATR=$3 that's 1.33 ATR profit
-    # → hits 1.0x tier (50%). Reason must reflect `live` source, not `entry_fallback`.
-    market_ctx["mark_price"] = 104  # mark moved up after market_ctx was built
+    # Mark moves $6 above avg_cost; with live ATR≈$3 that's ~2 ATR profit
+    # → hits 1.5x tier (#870). Reason must reflect `live` source, not `entry_fallback`.
+    market_ctx["mark_price"] = 106  # mark moved up after market_ctx was built
     result = registry.evaluate(
         "tiered_tp_atr_live",
         {

@@ -526,7 +526,11 @@ def test_backtester_tp_atr_fraction_uses_firing_tier_multiple():
 
 
 def test_backtester_tp_atr_fraction_uses_default_tier_multiple():
-    """Default TP1 is 1×ATR, so tp_atr_fraction=0.5 resolves to 0.5×ATR."""
+    """#870: default TP1 is 1.5×ATR, so tp_atr_fraction=0.5 resolves to 0.75×ATR.
+
+    With ATR=10 the first tier fires at +15 (mark 115), scaling out 40%; the
+    remainder rides to the forced close at 112.
+    """
     df = _df_open_then_hold(
         opens=[100, 100, 100, 110, 115, 118, 112],
         closes=[100, 100, 110, 115, 118, 112, 112],
@@ -545,7 +549,7 @@ def test_backtester_tp_atr_fraction_uses_default_tier_multiple():
     )
     result = bt.run(df, save=False)
     sides_prices = [(t["side"], t["exit_price"]) for t in result["trades"]]
-    assert ("long", 110.0) in sides_prices, sides_prices
+    assert ("long", 115.0) in sides_prices, sides_prices
     assert ("long", 112.0) in sides_prices, sides_prices
 
 

@@ -406,12 +406,22 @@ class Backtester:
                 if n in ("trailing_tp_ratchet", "trailing_tp_ratchet_regime"):
                     self._ratchet_ref = ref
                     break
-            if (
+            _regime_ratchet = (
+                (self._ratchet_ref or {}).get("name") or ""
+            ).strip().lower() == "trailing_tp_ratchet_regime"
+            if _regime_ratchet:
+                # #870: the regime variant's opening trail / SL owner is the
+                # per-regime trailing_stop_atr_regime block (scalar mult rejected).
+                if self.trailing_stop_atr_regime is None:
+                    raise ValueError(
+                        "trailing_tp_ratchet_regime requires trailing_stop_atr_regime"
+                    )
+            elif (
                 self.trailing_stop_atr_mult is None
                 or self.trailing_stop_atr_mult <= 0
             ):
                 raise ValueError(
-                    "trailing_tp_ratchet* requires trailing_stop_atr_mult > 0"
+                    "trailing_tp_ratchet requires trailing_stop_atr_mult > 0"
                 )
             if self.trailing_stop_pct is not None and self.trailing_stop_pct > 0:
                 raise ValueError(

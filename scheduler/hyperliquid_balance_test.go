@@ -1582,7 +1582,8 @@ func TestReconcileSharedCoin_TPPartialFill_DecrementsOwnerAndBooksPnL(t *testing
 					"ETH": {Symbol: "ETH", Quantity: ownerQty, InitialQuantity: ownerQty, AvgCost: avgCost, Side: "long",
 						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-owner-eth",
 						EntryATR: 100, StopLossOID: 77, StopLossTriggerPx: 2900,
-						TPOIDs: []int64{0, 222}},
+						// 3-element OID slice matches the #870 3-tier default (TP1 cleared).
+						TPOIDs: []int64{0, 222, 333}},
 				},
 			},
 			"hl-peer-eth": {
@@ -1673,7 +1674,8 @@ func TestReconcileSharedCoin_TPPartialFill_Short(t *testing.T) {
 				Positions: map[string]*Position{
 					"ETH": {Symbol: "ETH", Quantity: ownerQty, InitialQuantity: ownerQty, AvgCost: avgCost, Side: "short",
 						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-owner-eth",
-						TPOIDs: []int64{0, 222}},
+						// 3-element OID slice matches the #870 3-tier default (TP1 cleared).
+						TPOIDs: []int64{0, 222, 333}},
 				},
 			},
 			"hl-peer-eth": {

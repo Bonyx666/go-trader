@@ -215,33 +215,70 @@ func (b RegimeATRBlock) Resolve(regime string) (RegimeATREntry, bool) {
 var regimeATRDefaults = struct {
 	StopLoss map[string]RegimeATREntry
 	Trailing map[string]RegimeATREntry
-	// TPTiers is a tier list — each entry is one tier's regime map. Tier
-	// indices are positional and the final close_fraction is coerced to 1.0
-	// by the consumer to match the live `strategyTPTiers` contract.
-	TPTiers []RegimeATRBlock
 }{
 	StopLoss: map[string]RegimeATREntry{
 		"trending_up":   {ATR: 2.0},
 		"trending_down": {ATR: 2.0},
 		"ranging":       {ATR: 1.5},
 	},
+	// #870: the regime ratchet/trailing opening trail. ADX labels keep their
+	// pre-#870 values; composite labels resolve per quality group (clean=2.5,
+	// choppy=2.0, ranging=1.0) so a trailing_stop_atr_regime use_defaults block
+	// differentiates clean trends (wide initial risk) from ranges (tight).
 	Trailing: map[string]RegimeATREntry{
-		"trending_up":   {ATR: 2.5},
-		"trending_down": {ATR: 2.5},
-		"ranging":       {ATR: 2.0},
+		"trending_up":          {ATR: 2.5},
+		"trending_down":        {ATR: 2.5},
+		"ranging":              {ATR: 2.0},
+		"trending_up_clean":    {ATR: 2.5},
+		"trending_down_clean":  {ATR: 2.5},
+		"trending_up_choppy":   {ATR: 2.0},
+		"trending_down_choppy": {ATR: 2.0},
+		"ranging_quiet":        {ATR: 1.0},
+		"ranging_volatile":     {ATR: 1.0},
+		"ranging_directional":  {ATR: 1.0},
 	},
-	TPTiers: []RegimeATRBlock{
-		{TrendRegime: map[string]RegimeATREntry{
-			"trending_up":   {ATR: 2.0, CloseFraction: 0.5, HasCloseFrac: true},
-			"trending_down": {ATR: 2.0, CloseFraction: 0.5, HasCloseFrac: true},
-			"ranging":       {ATR: 1.5, CloseFraction: 0.5, HasCloseFrac: true},
-		}},
-		{TrendRegime: map[string]RegimeATREntry{
-			"trending_up":   {ATR: 4.0, CloseFraction: 1.0, HasCloseFrac: true},
-			"trending_down": {ATR: 4.0, CloseFraction: 1.0, HasCloseFrac: true},
-			"ranging":       {ATR: 2.5, CloseFraction: 1.0, HasCloseFrac: true},
-		}},
-	},
+}
+
+// regimeCloseDefaultGroup classifies a classifier label into one of three
+// default-ladder quality groups (#870). Composite quality suffixes win; bare
+// ADX trends fall to choppy (ADX exposes no clean/choppy signal); the
+// ranging-family (ADX `ranging` + composite `ranging_*`) maps to ranging.
+// Shared by the regime ATR-TP defaults (B2) and the regime ratchet defaults
+// (C2) so both differentiate identically.
+func regimeCloseDefaultGroup(label string) (string, bool) {
+	l := strings.TrimSpace(label)
+	switch {
+	case l == "":
+		return "", false
+	case strings.HasSuffix(l, "_clean"):
+		return "clean", true
+	case strings.HasSuffix(l, "_choppy"):
+		return "choppy", true
+	case strings.HasPrefix(l, "ranging"):
+		return "ranging", true
+	case strings.HasPrefix(l, "trending_up"), strings.HasPrefix(l, "trending_down"):
+		return "choppy", true
+	}
+	return "", false
+}
+
+// regimeTPTierGroupDefaults is the per-group default ATR take-profit ladder for
+// the regime ATR-TP evaluators (#870 B2). Tier counts are ragged by design:
+// clean lets trends run (4 patient rungs), choppy mirrors the scalar default (3
+// rungs), ranging scales out fast (2 rungs). Cumulative close fractions; the
+// final rung is coerced to 1.0 by finalizeProtectionTiers.
+var regimeTPTierGroupDefaults = map[string][]hlProtectionTier{
+	"clean":   {{Multiple: 2.5, Fraction: 0.25}, {Multiple: 4.0, Fraction: 0.50}, {Multiple: 5.5, Fraction: 0.75}, {Multiple: 7.0, Fraction: 1.00}},
+	"choppy":  {{Multiple: 1.5, Fraction: 0.40}, {Multiple: 3.0, Fraction: 0.80}, {Multiple: 5.0, Fraction: 1.00}},
+	"ranging": {{Multiple: 0.5, Fraction: 0.50}, {Multiple: 1.0, Fraction: 1.00}},
+}
+
+// regimeTPFleetDefaultLabelsByGroup is the full classifier vocabulary (ADX +
+// composite) grouped for inspect-time fleet-default rendering (#870).
+var regimeTPFleetDefaultLabelsByGroup = map[string][]string{
+	"clean":   {"trending_up_clean", "trending_down_clean"},
+	"choppy":  {"trending_up", "trending_down", "trending_up_choppy", "trending_down_choppy"},
+	"ranging": {"ranging", "ranging_quiet", "ranging_volatile", "ranging_directional"},
 }
 
 // defaultRegimeBlockForSurface returns the baseline trend_regime map for a
@@ -323,9 +360,11 @@ func mapRegimeToBaselineFamily(baseline map[string]RegimeATREntry, label string)
 }
 
 func expandRegimeATRDefaultsForLabels(baseline map[string]RegimeATREntry, labels []string) map[string]RegimeATREntry {
-	if labelsAreCanonicalADX(labels) {
-		return cloneRegimeMap(baseline)
-	}
+	// Always filter to exactly the requested labels. The baseline may carry
+	// extra keys (#870 added composite opening-trail entries to Trailing), so a
+	// blanket clone would leak composite keys into an ADX strategy's block.
+	// mapRegimeToBaselineFamily exact-matches a present label and otherwise
+	// falls back to the ADX family, so ADX vocab still resolves to its 3 entries.
 	out := make(map[string]RegimeATREntry, len(labels))
 	for _, label := range labels {
 		if e, ok := mapRegimeToBaselineFamily(baseline, label); ok {
@@ -793,8 +832,11 @@ func validateRegimeATRConfig(cfg *Config) []string {
 				if sc.StopLossATRMult != nil {
 					errs = append(errs, fmt.Sprintf("%s: trailing_stop_atr_regime is mutually exclusive with stop_loss_atr_mult", prefix))
 				}
-				if sc.Platform != "hyperliquid" || sc.Type != "perps" {
-					errs = append(errs, fmt.Sprintf("%s: trailing_stop_atr_regime is HL perps only", prefix))
+				// #870: HL perps, plus HL manual when it owns a regime ratchet
+				// (trailing_tp_ratchet_regime's per-regime opening trail / SL).
+				manualRatchet := sc.Type == "manual" && strategyUsesTrailingTPRatchetClose(*sc)
+				if sc.Platform != "hyperliquid" || (sc.Type != "perps" && !manualRatchet) {
+					errs = append(errs, fmt.Sprintf("%s: trailing_stop_atr_regime is HL perps only (or HL manual trailing_tp_ratchet_regime)", prefix))
 				}
 			}
 		}
@@ -879,30 +921,46 @@ func defaultRegimeTPTiersForRegime(regime string) []hlProtectionTier {
 	if regime == "" {
 		return nil
 	}
-	out := make([]hlProtectionTier, 0, len(regimeATRDefaults.TPTiers))
-	for _, block := range regimeATRDefaults.TPTiers {
-		// Map composite labels (e.g. trending_up_clean) onto the ADX-family
-		// baseline so use_defaults tier lists resolve under either classifier.
-		entry, ok := mapRegimeToBaselineFamily(block.TrendRegime, regime)
-		if !ok || entry.ATR <= 0 {
-			return nil
-		}
-		frac := entry.CloseFraction
-		if !entry.HasCloseFrac || frac <= 0 {
-			return nil
-		}
-		out = append(out, hlProtectionTier{Multiple: entry.ATR, Fraction: frac})
+	// #870: resolve the per-quality-group ladder (clean/choppy/ranging) rather
+	// than a single positional baseline, so tier counts differ per group.
+	group, ok := regimeCloseDefaultGroup(regime)
+	if !ok {
+		return nil
 	}
+	ladder := regimeTPTierGroupDefaults[group]
+	if len(ladder) < 2 {
+		return nil
+	}
+	out := make([]hlProtectionTier, len(ladder))
+	copy(out, ladder)
 	return finalizeProtectionTiers(out)
 }
 
 // InspectRegimeTPFleetDefaultBlocks returns deep copies of the fleet baseline
 // tier blocks used when a tiered_tp_atr{_live}_regime close ref sets
-// use_defaults:true. For go-trader inspect provenance (#738).
+// use_defaults:true. For go-trader inspect provenance (#738). #870: the
+// per-group ladders are ragged, so this renders the positional union across the
+// full classifier vocabulary — block[i] only carries the labels whose group
+// defines tier i (e.g. only clean labels appear in the 4th block).
 func InspectRegimeTPFleetDefaultBlocks() []RegimeATRBlock {
-	out := make([]RegimeATRBlock, len(regimeATRDefaults.TPTiers))
-	for i, b := range regimeATRDefaults.TPTiers {
-		out[i] = RegimeATRBlock{UseDefaults: true, TrendRegime: cloneRegimeMap(b.TrendRegime)}
+	maxTiers := 0
+	for _, ladder := range regimeTPTierGroupDefaults {
+		if len(ladder) > maxTiers {
+			maxTiers = len(ladder)
+		}
+	}
+	out := make([]RegimeATRBlock, maxTiers)
+	for i := 0; i < maxTiers; i++ {
+		tr := map[string]RegimeATREntry{}
+		for group, ladder := range regimeTPTierGroupDefaults {
+			if i >= len(ladder) {
+				continue
+			}
+			for _, label := range regimeTPFleetDefaultLabelsByGroup[group] {
+				tr[label] = RegimeATREntry{ATR: ladder[i].Multiple, CloseFraction: ladder[i].Fraction, HasCloseFrac: true}
+			}
+		}
+		out[i] = RegimeATRBlock{UseDefaults: true, TrendRegime: tr}
 	}
 	return out
 }

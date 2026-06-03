@@ -142,15 +142,33 @@ func TestResolveRegimeATR_ReturnsLabeledMultiplier(t *testing.T) {
 }
 
 func TestDefaultRegimeTPTiersForRegime(t *testing.T) {
-	tiers := defaultRegimeTPTiersForRegime("ranging")
-	if len(tiers) != 2 {
-		t.Fatalf("expected 2 default tiers, got %d", len(tiers))
+	// #870: per-group ragged ladders (ranging=2, choppy=3, clean=4 tiers).
+	cases := []struct {
+		regime    string
+		wantMults []float64
+	}{
+		{"ranging", []float64{0.5, 1.0}},
+		{"ranging_quiet", []float64{0.5, 1.0}},
+		{"trending_up", []float64{1.5, 3.0, 5.0}},          // ADX trend → choppy group
+		{"trending_down_choppy", []float64{1.5, 3.0, 5.0}}, // composite choppy
+		{"trending_up_clean", []float64{2.5, 4.0, 5.5, 7.0}},
 	}
-	if tiers[0].Multiple != 1.5 || tiers[1].Multiple != 2.5 {
-		t.Fatalf("baseline mult mismatch: got %v", tiers)
+	for _, tc := range cases {
+		tiers := defaultRegimeTPTiersForRegime(tc.regime)
+		if len(tiers) != len(tc.wantMults) {
+			t.Fatalf("%s: got %d tiers, want %d: %v", tc.regime, len(tiers), len(tc.wantMults), tiers)
+		}
+		for i, m := range tc.wantMults {
+			if tiers[i].Multiple != m {
+				t.Errorf("%s: tier[%d] mult = %g, want %g", tc.regime, i, tiers[i].Multiple, m)
+			}
+		}
+		if tiers[len(tiers)-1].Fraction != 1.0 {
+			t.Errorf("%s: final tier fraction must be coerced to 1.0, got %g", tc.regime, tiers[len(tiers)-1].Fraction)
+		}
 	}
-	if tiers[len(tiers)-1].Fraction != 1.0 {
-		t.Fatalf("final tier fraction must be coerced to 1.0, got %g", tiers[len(tiers)-1].Fraction)
+	if defaultRegimeTPTiersForRegime("") != nil {
+		t.Error("empty regime must resolve to nil (SL-only until stamped)")
 	}
 }
 

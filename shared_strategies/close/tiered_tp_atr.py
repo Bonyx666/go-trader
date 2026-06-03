@@ -9,9 +9,15 @@ from _helpers import (
     tier_list_from_params,
 )
 
+# #870: patient 3-rung scale-out (40%/80%/100% cumulative). Single Python source
+# for tiered_tp_atr + tiered_tp_atr_live (the _live evaluator imports _tiers from
+# here) and the registry default_params. MUST stay in sync with the Go on-chain
+# source of truth defaultHLProtectionTiers() so paper/backtest scale-outs match
+# the live reduce-only TP ladder.
 DEFAULT_TIERS = (
-    {"atr_multiple": 1.0, "close_fraction": 0.5},
-    {"atr_multiple": 2.0, "close_fraction": 1.0},
+    {"atr_multiple": 1.5, "close_fraction": 0.40},
+    {"atr_multiple": 3.0, "close_fraction": 0.80},
+    {"atr_multiple": 5.0, "close_fraction": 1.00},
 )
 
 

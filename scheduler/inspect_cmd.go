@@ -299,7 +299,7 @@ func resolveTP(sc StrategyConfig, explicit map[string]bool) tpResolution {
 			if hasTiers {
 				res.TiersFrom = "explicit on close ref"
 			} else {
-				res.TiersFrom = "default (canonical [1×@50%, 2×@100%])"
+				res.TiersFrom = "default (canonical [1.5×@40%, 3×@80%, 5×@100%])"
 			}
 		}
 		return res

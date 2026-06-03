@@ -9,9 +9,14 @@ from _helpers import (
     tier_list_from_params,
 )
 
+# #870: even-quarter price-move ladder (pure price move from entry, no leverage
+# term — evaluator math unchanged). Each tier closes another 25% as the position
+# advances 1% in price.
 DEFAULT_TIERS = (
-    {"profit_pct": 0.03, "close_fraction": 0.5},
-    {"profit_pct": 0.06, "close_fraction": 1.0},
+    {"profit_pct": 0.01, "close_fraction": 0.25},
+    {"profit_pct": 0.02, "close_fraction": 0.50},
+    {"profit_pct": 0.03, "close_fraction": 0.75},
+    {"profit_pct": 0.04, "close_fraction": 1.00},
 )
 
 

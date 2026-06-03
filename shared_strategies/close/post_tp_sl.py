@@ -39,10 +39,12 @@ _TIERED_TP_NAMES = (
 # Canonical fallback tier ladder when a tiered_tp_atr* close ref omits explicit
 # tiers. MUST stay in sync with the Go source of truth
 # `defaultHLProtectionTiers()` in scheduler/hyperliquid_protection.go
-# ({1×,0.5},{2×,1.0}); tp_atr_fraction derives its firing-tier multiple from it.
+# (#870: 1.5×/3×/5× @ 40%/80%/100%); tp_atr_fraction derives its firing-tier
+# multiple from it.
 _DEFAULT_SCALAR_TP_TIERS: Tuple[Tuple[float, float], ...] = (
-    (1.0, 0.5),
-    (2.0, 1.0),
+    (1.5, 0.40),
+    (3.0, 0.80),
+    (5.0, 1.00),
 )
 
 

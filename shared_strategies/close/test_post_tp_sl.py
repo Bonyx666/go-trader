@@ -331,7 +331,8 @@ def test_parse_tp_tier_close_fractions_use_defaults_composite_label():
         close_refs,
         regime="trending_up_clean",
     )
-    assert got == [0.5, 1.0]
+    # #870: trending_up_clean → clean group (4 cumulative fractions).
+    assert got == [0.25, 0.5, 0.75, 1.0]
 
 
 # --- Manual rejection: trail_from_here regime variant ----------------------

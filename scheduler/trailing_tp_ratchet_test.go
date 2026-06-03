@@ -402,11 +402,12 @@ func TestValidateTrailingTPRatchetClose_CompositeVocabulary(t *testing.T) {
 		t.Fatalf("expected 7 composite labels, got %d", len(composite))
 	}
 
-	trail := 3.0
+	// #870: the regime variant's opening trail / SL owner is the per-regime
+	// trailing_stop_atr_regime block (scalar trailing_stop_atr_mult rejected).
 	scOK := StrategyConfig{
 		ID: "hl-comp", Type: "perps", Platform: "hyperliquid",
-		RegimeATRWindow:     "daily",
-		TrailingStopATRMult: &trail,
+		RegimeATRWindow:       "daily",
+		TrailingStopATRRegime: &RegimeATRBlock{raw: composite7StateATR(3.0)},
 		CloseStrategy: &StrategyRef{
 			Name:   "trailing_tp_ratchet_regime",
 			Params: map[string]interface{}{"tp_tiers": compositeTable(composite)},
@@ -419,11 +420,10 @@ func TestValidateTrailingTPRatchetClose_CompositeVocabulary(t *testing.T) {
 	// A 3-state ADX label under a composite window must be rejected.
 	bad := compositeTable(composite)
 	bad["ranging"] = tierList // not a composite label
-	trail2 := 3.0
 	scBad := StrategyConfig{
 		ID: "hl-comp-bad", Type: "perps", Platform: "hyperliquid",
-		RegimeATRWindow:     "daily",
-		TrailingStopATRMult: &trail2,
+		RegimeATRWindow:       "daily",
+		TrailingStopATRRegime: &RegimeATRBlock{raw: composite7StateATR(3.0)},
 		CloseStrategy: &StrategyRef{
 			Name:   "trailing_tp_ratchet_regime",
 			Params: map[string]interface{}{"tp_tiers": bad},
@@ -549,15 +549,21 @@ func TestValidateTrailingTPRatchetClose_DefaultRespectsInitialTrail(t *testing.T
 }
 
 func TestValidateTrailingTPRatchetClose_RegimeOmittedTiersUsesDefault(t *testing.T) {
-	trail := 2.0
+	// #870: the regime variant's opening trail / SL owner is the per-regime
+	// block; each ADX label's open must clear its group's first ratchet rung
+	// (trending_* → choppy first rung 1.5; ranging → ranging first rung 1.0).
 	sc := StrategyConfig{
 		ID: "s1", Type: "perps", Platform: "hyperliquid",
-		TrailingStopATRMult: &trail,
-		CloseStrategy:       &StrategyRef{Name: "trailing_tp_ratchet_regime", Params: map[string]interface{}{"use_defaults": true}},
+		TrailingStopATRRegime: &RegimeATRBlock{TrendRegime: map[string]RegimeATREntry{
+			"trending_up":   {ATR: 2.0},
+			"trending_down": {ATR: 2.0},
+			"ranging":       {ATR: 1.5},
+		}},
+		CloseStrategy: &StrategyRef{Name: "trailing_tp_ratchet_regime", Params: map[string]interface{}{"use_defaults": true}},
 	}
-	// regime.enabled=true: the broadcast default satisfies exhaustiveness for all labels.
+	// regime.enabled=true: the per-group default satisfies exhaustiveness for all labels.
 	if errs := validateTrailingTPRatchetClose(sc, canonicalTrendRegimeLabels, true); len(errs) > 0 {
-		t.Fatalf("regime ratchet use_defaults should validate via broadcast default, got: %v", errs)
+		t.Fatalf("regime ratchet use_defaults should validate via per-group default, got: %v", errs)
 	}
 	// regime.enabled=false still rejected (independent of tier source).
 	if errs := validateTrailingTPRatchetClose(sc, canonicalTrendRegimeLabels, false); !errListContains(errs, "requires top-level regime.enabled=true") {
@@ -567,12 +573,21 @@ func TestValidateTrailingTPRatchetClose_RegimeOmittedTiersUsesDefault(t *testing
 
 func TestTrailingRatchetTiersForRegime_OmittedReturnsDefault(t *testing.T) {
 	trail := 2.0
-	want := defaultTrailingRatchetTiers()
 	cases := []struct {
 		name, closeName, regime string
+		want                    []trailingRatchetTier
 	}{
-		{"scalar", "trailing_tp_ratchet", ""},
-		{"regime-broadcast", "trailing_tp_ratchet_regime", "trending_up"},
+		{"scalar", "trailing_tp_ratchet", "", defaultTrailingRatchetTiers()},
+		// #870: the regime variant resolves the per-quality-group ladder.
+		{"regime-clean", "trailing_tp_ratchet_regime", "trending_up_clean", []trailingRatchetTier{
+			{ATRMultiple: 3.0, TrailingMultAfter: 1.5}, {ATRMultiple: 4.5, TrailingMultAfter: 1.0}, {ATRMultiple: 6.0, TrailingMultAfter: 0.5},
+		}},
+		{"regime-choppy", "trailing_tp_ratchet_regime", "trending_up", []trailingRatchetTier{
+			{ATRMultiple: 2.0, TrailingMultAfter: 1.5}, {ATRMultiple: 2.5, TrailingMultAfter: 1.0}, {ATRMultiple: 3.0, TrailingMultAfter: 0.5},
+		}},
+		{"regime-ranging", "trailing_tp_ratchet_regime", "ranging_quiet", []trailingRatchetTier{
+			{ATRMultiple: 0.75, CloseFraction: 0.4, TrailingMultAfter: 1.0}, {ATRMultiple: 1.5, CloseFraction: 0.8, TrailingMultAfter: 0.75}, {ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.5},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -582,15 +597,139 @@ func TestTrailingRatchetTiersForRegime_OmittedReturnsDefault(t *testing.T) {
 				CloseStrategy:       &StrategyRef{Name: tc.closeName, Params: map[string]interface{}{"use_defaults": true}},
 			}
 			got := trailingRatchetTiersForRegime(sc, tc.regime)
-			if len(got) != len(want) {
-				t.Fatalf("resolved %d tiers want %d (%+v)", len(got), len(want), got)
+			if len(got) != len(tc.want) {
+				t.Fatalf("resolved %d tiers want %d (%+v)", len(got), len(tc.want), got)
 			}
-			for i := range want {
-				if got[i] != want[i] {
-					t.Fatalf("tier[%d]=%+v want %+v", i, got[i], want[i])
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("tier[%d]=%+v want %+v", i, got[i], tc.want[i])
 				}
 			}
 		})
+	}
+}
+
+func TestRegimeCloseDefaultGroup(t *testing.T) {
+	cases := []struct {
+		label, group string
+		ok           bool
+	}{
+		{"trending_up_clean", "clean", true},
+		{"trending_down_clean", "clean", true},
+		{"trending_up_choppy", "choppy", true},
+		{"trending_down_choppy", "choppy", true},
+		{"trending_up", "choppy", true},   // ADX trend → choppy (no clean/choppy signal)
+		{"trending_down", "choppy", true}, // ADX trend → choppy
+		{"ranging", "ranging", true},
+		{"ranging_quiet", "ranging", true},
+		{"ranging_volatile", "ranging", true},
+		{"ranging_directional", "ranging", true},
+		{"", "", false},
+		{"bogus", "", false},
+	}
+	for _, tc := range cases {
+		g, ok := regimeCloseDefaultGroup(tc.label)
+		if ok != tc.ok || g != tc.group {
+			t.Errorf("regimeCloseDefaultGroup(%q) = (%q, %v), want (%q, %v)", tc.label, g, ok, tc.group, tc.ok)
+		}
+	}
+}
+
+// TestValidateTrailingTPRatchetClose_RegimeRejectsScalarMult covers #870: the
+// regime variant's trail is owned by trailing_stop_atr_regime, so a scalar
+// trailing_stop_atr_mult is rejected.
+func TestValidateTrailingTPRatchetClose_RegimeRejectsScalarMult(t *testing.T) {
+	trail := 2.0
+	sc := StrategyConfig{
+		ID: "s1", Type: "perps", Platform: "hyperliquid",
+		TrailingStopATRMult: &trail,
+		TrailingStopATRRegime: &RegimeATRBlock{TrendRegime: map[string]RegimeATREntry{
+			"trending_up": {ATR: 2.0}, "trending_down": {ATR: 2.0}, "ranging": {ATR: 1.5},
+		}},
+		CloseStrategy: &StrategyRef{Name: "trailing_tp_ratchet_regime", Params: map[string]interface{}{"use_defaults": true}},
+	}
+	errs := validateTrailingTPRatchetClose(sc, canonicalTrendRegimeLabels, true)
+	if !errListContains(errs, "cannot combine with scalar trailing_stop_atr_mult") {
+		t.Fatalf("expected scalar-mult rejection for regime ratchet, got: %v", errs)
+	}
+}
+
+// TestValidateTrailingTPRatchetClose_RegimePerKeyInitialTrail covers #870: the
+// initial-trail coupling is checked against each regime key's own opening trail,
+// so a too-loose first rung is rejected scoped to that key only.
+func TestValidateTrailingTPRatchetClose_RegimePerKeyInitialTrail(t *testing.T) {
+	tier := func(mult, trailAfter float64) map[string]interface{} {
+		return map[string]interface{}{"atr_multiple": mult, "close_fraction": 0.0, "trailing_mult_after": trailAfter}
+	}
+	table := map[string]interface{}{
+		"trending_up":   []interface{}{tier(3.0, 1.5), tier(4.0, 1.0)},
+		"trending_down": []interface{}{tier(3.0, 1.5), tier(4.0, 1.0)},
+		"ranging":       []interface{}{tier(3.0, 2.0), tier(4.0, 1.0)}, // first trail 2.0 > ranging open 1.0
+	}
+	sc := StrategyConfig{
+		ID: "s1", Type: "perps", Platform: "hyperliquid",
+		TrailingStopATRRegime: &RegimeATRBlock{TrendRegime: map[string]RegimeATREntry{
+			"trending_up": {ATR: 3.0}, "trending_down": {ATR: 3.0}, "ranging": {ATR: 1.0},
+		}},
+		CloseStrategy: &StrategyRef{Name: "trailing_tp_ratchet_regime", Params: map[string]interface{}{"tp_tiers": table}},
+	}
+	errs := validateTrailingTPRatchetClose(sc, canonicalTrendRegimeLabels, true)
+	if !errListContains(errs, "tp_tiers.ranging") || !errListContains(errs, "can only tighten") {
+		t.Fatalf("expected per-key initial-trail error scoped to ranging, got: %v", errs)
+	}
+	if errListContains(errs, "tp_tiers.trending_up[0]") {
+		t.Fatalf("trending_up (open 3.0) should pass the initial-trail check, got: %v", errs)
+	}
+}
+
+// TestValidateTrailingTPRatchetClose_ManualRegimeRatchet covers #870: HL manual
+// may own a regime ratchet via trailing_stop_atr_regime (gate widened).
+func TestValidateTrailingTPRatchetClose_ManualRegimeRatchet(t *testing.T) {
+	sc := StrategyConfig{
+		ID: "hl-man", Type: "manual", Platform: "hyperliquid",
+		TrailingStopATRRegime: &RegimeATRBlock{TrendRegime: map[string]RegimeATREntry{
+			"trending_up": {ATR: 2.0}, "trending_down": {ATR: 2.0}, "ranging": {ATR: 1.5},
+		}},
+		CloseStrategy: &StrategyRef{Name: "trailing_tp_ratchet_regime", Params: map[string]interface{}{"use_defaults": true}},
+	}
+	if errs := validateTrailingTPRatchetClose(sc, canonicalTrendRegimeLabels, true); len(errs) > 0 {
+		t.Fatalf("manual regime ratchet should validate, got: %v", errs)
+	}
+}
+
+// TestDefaultTrailingRatchetTiersForRegime covers #870 per-group ratchet ladders.
+func TestDefaultTrailingRatchetTiersForRegime(t *testing.T) {
+	clean := defaultTrailingRatchetTiersForRegime("trending_up_clean")
+	if len(clean) != 3 || clean[0].ATRMultiple != 3.0 || clean[0].TrailingMultAfter != 1.5 || clean[2].ATRMultiple != 6.0 {
+		t.Fatalf("clean group mismatch: %+v", clean)
+	}
+	ranging := defaultTrailingRatchetTiersForRegime("ranging_volatile")
+	if len(ranging) != 3 || ranging[0].CloseFraction != 0.4 || ranging[2].CloseFraction != 1.0 {
+		t.Fatalf("ranging group mismatch: %+v", ranging)
+	}
+	if defaultTrailingRatchetTiersForRegime("") != nil {
+		t.Error("empty regime must resolve to nil")
+	}
+}
+
+// TestValidateRegimeRatchet_AllDefaultsCompositeValidates is the #870
+// integration case: trailing_stop_atr_regime + trailing_tp_ratchet_regime both
+// on use_defaults under a composite classifier. The full validateRegimeATRConfig
+// path expands the per-group opening trails (clean 2.5 / choppy 2.0 / ranging
+// 1.0) and per-group ratchet ladders, and the per-key initial-trail coupling
+// must hold for every label (each group's first rung ≤ its open).
+func TestValidateRegimeRatchet_AllDefaultsCompositeValidates(t *testing.T) {
+	sc := StrategyConfig{
+		ID: "hl-allc", Type: "perps", Platform: "hyperliquid",
+		RegimeATRWindow:       "daily",
+		TrailingStopATRRegime: &RegimeATRBlock{raw: map[string]interface{}{"use_defaults": true}},
+		CloseStrategy: &StrategyRef{
+			Name:   "trailing_tp_ratchet_regime",
+			Params: map[string]interface{}{"use_defaults": true},
+		},
+	}
+	if errs := validateRegimeATRConfig(compositeRegimeCfg(sc)); len(errs) != 0 {
+		t.Fatalf("all-defaults composite regime ratchet must validate, got: %v", errs)
 	}
 }
 

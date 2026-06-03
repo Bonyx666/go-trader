@@ -121,27 +121,47 @@ REGIME_ATR_DEFAULTS_TRAILING: Dict[str, RegimeATREntry] = {
     "trending_up": RegimeATREntry(atr=2.5),
     "trending_down": RegimeATREntry(atr=2.5),
     "ranging": RegimeATREntry(atr=2.0),
+    # #870: composite group opening trails (clean=2.5, choppy=2.0, ranging=1.0).
+    # ADX labels keep their pre-#870 values; resolve() exact-matches keys so the
+    # extra composite entries are inert for an ADX strategy.
+    "trending_up_clean": RegimeATREntry(atr=2.5),
+    "trending_down_clean": RegimeATREntry(atr=2.5),
+    "trending_up_choppy": RegimeATREntry(atr=2.0),
+    "trending_down_choppy": RegimeATREntry(atr=2.0),
+    "ranging_quiet": RegimeATREntry(atr=1.0),
+    "ranging_volatile": RegimeATREntry(atr=1.0),
+    "ranging_directional": RegimeATREntry(atr=1.0),
 }
 
-# Tier defaults: positional list. Each entry is one tier's regime block with
-# per-regime close_fraction. Final tier close_fraction is coerced to 1.0 by
-# downstream consumers.
-REGIME_ATR_DEFAULTS_TP_TIERS: List[RegimeATRBlock] = [
-    RegimeATRBlock(
-        trend_regime={
-            "trending_up": RegimeATREntry(atr=2.0, close_fraction=0.5, has_close_frac=True),
-            "trending_down": RegimeATREntry(atr=2.0, close_fraction=0.5, has_close_frac=True),
-            "ranging": RegimeATREntry(atr=1.5, close_fraction=0.5, has_close_frac=True),
-        }
-    ),
-    RegimeATRBlock(
-        trend_regime={
-            "trending_up": RegimeATREntry(atr=4.0, close_fraction=1.0, has_close_frac=True),
-            "trending_down": RegimeATREntry(atr=4.0, close_fraction=1.0, has_close_frac=True),
-            "ranging": RegimeATREntry(atr=2.5, close_fraction=1.0, has_close_frac=True),
-        }
-    ),
-]
+# #870: per-quality-group default ATR take-profit ladders. Mirrors
+# regimeTPTierGroupDefaults in scheduler/regime_atr.go. (atr_multiple,
+# cumulative_close_fraction); the final rung is coerced to 1.0 by the consumer.
+# Tier counts are ragged by design: clean lets trends run (4 rungs), choppy
+# mirrors the scalar default (3), ranging scales out fast (2).
+REGIME_TP_TIER_GROUP_DEFAULTS: Dict[str, List[Tuple[float, float]]] = {
+    "clean": [(2.5, 0.25), (4.0, 0.50), (5.5, 0.75), (7.0, 1.00)],
+    "choppy": [(1.5, 0.40), (3.0, 0.80), (5.0, 1.00)],
+    "ranging": [(0.5, 0.50), (1.0, 1.00)],
+}
+
+
+def regime_close_default_group(label: str) -> Optional[str]:
+    """Classify a classifier label into one of three default-ladder quality
+    groups (#870). Mirrors regimeCloseDefaultGroup in
+    scheduler/regime_atr.go: composite quality suffixes win, bare ADX trends
+    fall to choppy, the ranging-family maps to ranging."""
+    label = (label or "").strip()
+    if not label:
+        return None
+    if label.endswith("_clean"):
+        return "clean"
+    if label.endswith("_choppy"):
+        return "choppy"
+    if label.startswith("ranging"):
+        return "ranging"
+    if label.startswith("trending_up") or label.startswith("trending_down"):
+        return "choppy"
+    return None
 
 
 def _default_block_for_surface(surface: str) -> Optional[Dict[str, RegimeATREntry]]:
@@ -149,21 +169,6 @@ def _default_block_for_surface(surface: str) -> Optional[Dict[str, RegimeATREntr
         return dict(REGIME_ATR_DEFAULTS_STOP_LOSS)
     if surface == SURFACE_TRAILING:
         return dict(REGIME_ATR_DEFAULTS_TRAILING)
-    return None
-
-
-def _default_entry_for_label(
-    baseline: Dict[str, RegimeATREntry],
-    label: str,
-) -> Optional[RegimeATREntry]:
-    if label in baseline:
-        return baseline[label]
-    if label.startswith("trending_up"):
-        return baseline.get("trending_up")
-    if label.startswith("trending_down"):
-        return baseline.get("trending_down")
-    if label.startswith("ranging"):
-        return baseline.get("ranging")
     return None
 
 
@@ -382,22 +387,37 @@ def parse_regime_tp_tiers(
                 "tiers (use_defaults is all-or-nothing)"
             )
             return [], errs
-        # Use the default tier list. Each default tier carries per-regime
-        # close_fraction (HasCloseFrac=True).
+        # #870: per-quality-group default ladders (clean 4 / choppy 3 / ranging
+        # 2 tiers). Build positional specs as the union across the requested
+        # labels — block[i] only carries the labels whose group defines tier i.
+        # Callers that resolve a single regime (sl_after) get exactly that
+        # group's tier count; resolve_regime_tier skips labels absent from a
+        # block. Mirrors Go's defaultRegimeTPTiersForRegime / InspectRegimeTP.
+        label_ladders: Dict[str, List[Tuple[float, float]]] = {}
+        max_tiers = 0
+        for label in labels:
+            group = regime_close_default_group(label)
+            ladder = REGIME_TP_TIER_GROUP_DEFAULTS.get(group) if group else None
+            if not ladder:
+                continue
+            label_ladders[label] = ladder
+            if len(ladder) > max_tiers:
+                max_tiers = len(ladder)
         out: List[RegimeTierSpec] = []
-        for default_block in REGIME_ATR_DEFAULTS_TP_TIERS:
-            # Deep copy and expand composite labels onto their ADX-family
-            # defaults so Python mirrors Go's defaultRegimeTPTiersForRegime.
-            expanded: Dict[str, RegimeATREntry] = {}
-            for label in labels:
-                entry = _default_entry_for_label(default_block.trend_regime, label)
-                if entry is not None:
-                    expanded[label] = entry
-            block_copy = RegimeATRBlock(
-                use_defaults=True,
-                trend_regime=expanded,
+        for i in range(max_tiers):
+            trend: Dict[str, RegimeATREntry] = {}
+            for label, ladder in label_ladders.items():
+                if i < len(ladder):
+                    mult, frac = ladder[i]
+                    trend[label] = RegimeATREntry(
+                        atr=mult, close_fraction=frac, has_close_frac=True
+                    )
+            out.append(
+                RegimeTierSpec(
+                    block=RegimeATRBlock(use_defaults=True, trend_regime=trend),
+                    tier_close_fraction=None,
+                )
             )
-            out.append(RegimeTierSpec(block=block_copy, tier_close_fraction=None))
         return out, errs
 
     if not isinstance(raw_tiers, list):

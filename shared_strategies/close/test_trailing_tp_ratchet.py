@@ -130,3 +130,41 @@ def test_registry_lists_new_strategies(registry):
     built = registry.build_close_registry("futures")
     assert "trailing_tp_ratchet" in built
     assert "trailing_tp_ratchet_regime" in built
+
+
+def test_regime_close_default_group_mapping(ratchet):
+    # #870: composite quality suffixes win; ADX trends fall to choppy.
+    g = ratchet.regime_close_default_group
+    assert g("trending_up_clean") == "clean"
+    assert g("trending_down_clean") == "clean"
+    assert g("trending_up_choppy") == "choppy"
+    assert g("trending_up") == "choppy"  # ADX trend → choppy
+    assert g("trending_down") == "choppy"
+    assert g("ranging") == "ranging"
+    assert g("ranging_volatile") == "ranging"
+    assert g("") is None
+    assert g("bogus") is None
+
+
+def test_resolve_tiers_for_regime_group_defaults(ratchet):
+    # #870: regime variant + omitted tp_tiers → per-quality-group ladder.
+    clean, errs = ratchet.resolve_tiers_for_regime(
+        {"use_defaults": True}, "trending_up_clean", regime_table=True,
+    )
+    assert errs == []
+    assert [t[0] for t in clean] == [3.0, 4.5, 6.0]
+    assert all(t[1] == 0.0 for t in clean)  # trend group: no scale-out
+
+    ranging, errs = ratchet.resolve_tiers_for_regime(
+        {"use_defaults": True}, "ranging_quiet", regime_table=True,
+    )
+    assert errs == []
+    assert [t[0] for t in ranging] == [0.75, 1.5, 2.0]
+    assert [t[1] for t in ranging] == [0.4, 0.8, 1.0]  # ranging scales out
+
+    # Scalar variant still broadcasts the single #866 default.
+    scalar, errs = ratchet.resolve_tiers_for_regime(
+        {"use_defaults": True}, "", regime_table=False,
+    )
+    assert errs == []
+    assert [t[0] for t in scalar] == [2.0, 2.5, 3.0]

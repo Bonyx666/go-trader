@@ -61,6 +61,48 @@ func defaultTrailingRatchetTiers() []trailingRatchetTier {
 	}
 }
 
+// ratchetTierGroupDefaults is the per-quality-group default ratchet ladder for
+// the regime variant (#870 C2). Trend groups (clean/choppy) are pure
+// let-it-ride (close_fraction 0); ranging scales out as ranges mean-revert.
+// Each group's first-rung trail couples to that group's opening trail in
+// regimeATRDefaults.Trailing (clean 2.5 / choppy 2.0 / ranging 1.0). Mirrors
+// DEFAULT_RATCHET_TIERS_BY_GROUP in shared_strategies/close/trailing_tp_ratchet.py.
+var ratchetTierGroupDefaults = map[string][]trailingRatchetTier{
+	"clean": {
+		{ATRMultiple: 3.0, CloseFraction: 0, TrailingMultAfter: 1.5},
+		{ATRMultiple: 4.5, CloseFraction: 0, TrailingMultAfter: 1.0},
+		{ATRMultiple: 6.0, CloseFraction: 0, TrailingMultAfter: 0.5},
+	},
+	"choppy": {
+		{ATRMultiple: 2.0, CloseFraction: 0, TrailingMultAfter: 1.5},
+		{ATRMultiple: 2.5, CloseFraction: 0, TrailingMultAfter: 1.0},
+		{ATRMultiple: 3.0, CloseFraction: 0, TrailingMultAfter: 0.5},
+	},
+	"ranging": {
+		{ATRMultiple: 0.75, CloseFraction: 0.4, TrailingMultAfter: 1.0},
+		{ATRMultiple: 1.5, CloseFraction: 0.8, TrailingMultAfter: 0.75},
+		{ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.5},
+	},
+}
+
+// defaultTrailingRatchetTiersForRegime resolves the per-group default ratchet
+// ladder for a stamped regime label (#870 C2 use_defaults / omitted tp_tiers on
+// trailing_tp_ratchet_regime). Returns nil for an empty/unknown label so the
+// caller emits only the SL until the position regime is stamped.
+func defaultTrailingRatchetTiersForRegime(regime string) []trailingRatchetTier {
+	group, ok := regimeCloseDefaultGroup(regime)
+	if !ok {
+		return nil
+	}
+	src := ratchetTierGroupDefaults[group]
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]trailingRatchetTier, len(src))
+	copy(out, src)
+	return out
+}
+
 func resolveTrailingMultAfter(tier map[string]interface{}, firingMultiple float64) (float64, error) {
 	_, hasAbs := tier["trailing_mult_after"]
 	_, hasFrac := tier["tp_atr_fraction"]
@@ -161,9 +203,13 @@ func trailingRatchetTiersForRegime(sc StrategyConfig, regime string) []trailingR
 		}
 		raw, ok := closeTierListParam(ref.Params)
 		if !ok {
-			// #866: omitted tp_tiers (or use_defaults:true) resolves to the
-			// system default ladder, broadcast across every regime for the
-			// regime variant.
+			// Omitted tp_tiers (or use_defaults:true) resolves to the system
+			// default ladder. #870: the regime variant resolves the per-group
+			// ladder for the stamped regime; the scalar variant broadcasts the
+			// single #866 default.
+			if name == trailingTPRatchetRegimeCloseName {
+				return defaultTrailingRatchetTiersForRegime(regime)
+			}
 			return defaultTrailingRatchetTiers()
 		}
 		if name == trailingTPRatchetRegimeCloseName {
@@ -201,14 +247,36 @@ func validateTrailingTPRatchetClose(sc StrategyConfig, labels []string, regimeEn
 	if sc.Platform != "hyperliquid" || (sc.Type != "perps" && sc.Type != "manual") {
 		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* is HL perps/manual only", prefix))
 	}
-	if sc.TrailingStopATRMult == nil || *sc.TrailingStopATRMult <= 0 {
-		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* requires trailing_stop_atr_mult > 0 (initial trail distance)", prefix))
+	// #870: the SL owner + initial trail differs by variant. The scalar
+	// trailing_tp_ratchet owns it via trailing_stop_atr_mult; the regime
+	// trailing_tp_ratchet_regime owns it via the per-regime trailing_stop_atr_regime
+	// block, so per-trade initial risk scales with the stamped regime (tight in
+	// ranges, wide in clean trends).
+	regimeVariant := false
+	for _, ref := range sc.closeRefs() {
+		if strings.ToLower(strings.TrimSpace(ref.Name)) == trailingTPRatchetRegimeCloseName {
+			regimeVariant = true
+			break
+		}
+	}
+	hasRegimeBlock := sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero()
+	if regimeVariant {
+		if !hasRegimeBlock {
+			errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet_regime requires trailing_stop_atr_regime (the per-regime opening trail / SL owner)", prefix))
+		}
+		if sc.TrailingStopATRMult != nil && *sc.TrailingStopATRMult > 0 {
+			errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet_regime cannot combine with scalar trailing_stop_atr_mult (the trailing_stop_atr_regime block owns the trail)", prefix))
+		}
+	} else {
+		if sc.TrailingStopATRMult == nil || *sc.TrailingStopATRMult <= 0 {
+			errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet requires trailing_stop_atr_mult > 0 (initial trail distance)", prefix))
+		}
+		if hasRegimeBlock {
+			errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet cannot combine with trailing_stop_atr_regime (use trailing_tp_ratchet_regime)", prefix))
+		}
 	}
 	if sc.TrailingStopPct != nil && *sc.TrailingStopPct > 0 {
 		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* cannot combine with trailing_stop_pct", prefix))
-	}
-	if sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero() {
-		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* cannot combine with trailing_stop_atr_regime", prefix))
 	}
 	if sc.StopLossPct != nil && *sc.StopLossPct > 0 {
 		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* cannot combine with stop_loss_pct", prefix))
@@ -222,9 +290,22 @@ func validateTrailingTPRatchetClose(sc StrategyConfig, labels []string, regimeEn
 	if sc.StopLossATRRegime.IsConfigured() {
 		errs = append(errs, fmt.Sprintf("%s: trailing_tp_ratchet* cannot combine with stop_loss_atr_regime", prefix))
 	}
-	initialTrail := 0.0
-	if sc.TrailingStopATRMult != nil {
-		initialTrail = *sc.TrailingStopATRMult
+	// scalarInitialTrail couples the scalar variant's first rung to
+	// trailing_stop_atr_mult; the regime variant resolves the open per regime
+	// key from the trailing_stop_atr_regime block (populated upstream by
+	// ResolveSurfaceWithLabels).
+	scalarInitialTrail := 0.0
+	if !regimeVariant && sc.TrailingStopATRMult != nil {
+		scalarInitialTrail = *sc.TrailingStopATRMult
+	}
+	regimeKeyOpen := func(key string) float64 {
+		if sc.TrailingStopATRRegime == nil {
+			return 0
+		}
+		if v, ok := resolveRegimeATR(*sc.TrailingStopATRRegime, key); ok {
+			return v
+		}
+		return 0
 	}
 	for _, ref := range sc.closeRefs() {
 		if !isTrailingTPRatchetCloseName(ref.Name) {
@@ -249,14 +330,22 @@ func validateTrailingTPRatchetClose(sc StrategyConfig, labels []string, regimeEn
 		}
 		raw, hasTiers := closeTierListParam(ref.Params)
 		if !hasTiers {
-			// #866: omitted tp_tiers (or use_defaults:true) resolves to the
-			// system default ladder — broadcast across every regime label for
-			// the regime variant, so exhaustiveness is satisfied automatically.
-			// The default is internally valid (monotonic, ascending); the only
-			// load-time check that still applies is the initial-trail coupling
-			// against the operator's trailing_stop_atr_mult.
-			def := defaultTrailingRatchetTiers()
-			errs = append(errs, validateTrailingRatchetInitialTrail(def, initialTrail, sub+".tp_tiers(default)")...)
+			// Omitted tp_tiers (or use_defaults:true) resolves to the system
+			// default ladder. The default is internally valid (monotonic,
+			// ascending); the only load-time check that still applies is the
+			// initial-trail coupling against the opening trail. #870: the regime
+			// variant resolves a per-group ladder per regime key and couples each
+			// against that key's opening trail; the scalar variant uses the
+			// single #866 default against trailing_stop_atr_mult.
+			if isRegime {
+				for _, key := range labels {
+					def := defaultTrailingRatchetTiersForRegime(key)
+					errs = append(errs, validateTrailingRatchetInitialTrail(def, regimeKeyOpen(key), sub+".tp_tiers(default)."+key)...)
+				}
+			} else {
+				def := defaultTrailingRatchetTiers()
+				errs = append(errs, validateTrailingRatchetInitialTrail(def, scalarInitialTrail, sub+".tp_tiers(default)")...)
+			}
 			continue
 		}
 		if isRegime {
@@ -283,7 +372,7 @@ func validateTrailingTPRatchetClose(sc StrategyConfig, labels []string, regimeEn
 				tiers, subErrs := parseTrailingRatchetTierList(block, sub+".tp_tiers."+key)
 				errs = append(errs, subErrs...)
 				errs = append(errs, validateTrailingRatchetTierMonotonicity(tiers, sub+".tp_tiers."+key)...)
-				errs = append(errs, validateTrailingRatchetInitialTrail(tiers, initialTrail, sub+".tp_tiers."+key)...)
+				errs = append(errs, validateTrailingRatchetInitialTrail(tiers, regimeKeyOpen(key), sub+".tp_tiers."+key)...)
 			}
 			continue
 		}
@@ -299,13 +388,13 @@ func validateTrailingTPRatchetClose(sc StrategyConfig, labels []string, regimeEn
 			tiers, subErrs := parseTrailingRatchetTierList(block, sub+".tp_tiers")
 			errs = append(errs, subErrs...)
 			errs = append(errs, validateTrailingRatchetTierMonotonicity(tiers, sub+".tp_tiers")...)
-			errs = append(errs, validateTrailingRatchetInitialTrail(tiers, initialTrail, sub+".tp_tiers")...)
+			errs = append(errs, validateTrailingRatchetInitialTrail(tiers, scalarInitialTrail, sub+".tp_tiers")...)
 			continue
 		}
 		tiers, subErrs := parseTrailingRatchetTierList(raw, sub+".tp_tiers")
 		errs = append(errs, subErrs...)
 		errs = append(errs, validateTrailingRatchetTierMonotonicity(tiers, sub+".tp_tiers")...)
-		errs = append(errs, validateTrailingRatchetInitialTrail(tiers, initialTrail, sub+".tp_tiers")...)
+		errs = append(errs, validateTrailingRatchetInitialTrail(tiers, scalarInitialTrail, sub+".tp_tiers")...)
 	}
 	return errs
 }
@@ -364,6 +453,14 @@ func effectiveTrailingRatchetMult(pos *Position, sc StrategyConfig) float64 {
 	}
 	if sc.TrailingStopATRMult != nil && *sc.TrailingStopATRMult > 0 {
 		return *sc.TrailingStopATRMult
+	}
+	// #870: the regime ratchet's initial loose trail is the per-regime opening
+	// trail from trailing_stop_atr_regime, not a scalar mult — resolve it so the
+	// first rung is correctly seen as a tightening (not a no-op against 0).
+	if sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero() && pos != nil {
+		if v, ok := resolveRegimeATR(*sc.TrailingStopATRRegime, protectionATRRegimeLabel(pos, sc)); ok {
+			return v
+		}
 	}
 	return 0
 }

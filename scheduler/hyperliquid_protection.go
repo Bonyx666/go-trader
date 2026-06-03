@@ -161,15 +161,19 @@ func strategyTPTiersForRegime(sc StrategyConfig, regime string) []hlProtectionTi
 }
 
 // defaultHLProtectionTiers is the canonical fallback tier ladder used when a
-// tiered_tp_atr* close ref omits explicit tiers ({1×,0.5},{2×,1.0}). Single
+// tiered_tp_atr* close ref omits explicit tiers. #870 retuned it from the eager
+// 1×/2× to a patient 3-rung 1.5×/3×/5× ladder (40%/80%/100% cumulative). Single
 // source of truth for the scalar default — post_tp_sl.go derives
 // tp_atr_fraction's default tier multiples from this (so the firing-tier
 // multiple stays in sync if the ladder ever changes), and post_tp_sl.py mirrors
-// it as _DEFAULT_SCALAR_TP_TIERS.
+// it as _DEFAULT_SCALAR_TP_TIERS. NOTE: this also seeds HL on-chain reduce-only
+// TP placement for every tiered_tp_atr* strategy on defaults — changing it
+// moves live TP orders (#870 ⚠️ on-chain).
 func defaultHLProtectionTiers() []hlProtectionTier {
 	return []hlProtectionTier{
-		{Multiple: 1, Fraction: 0.5},
-		{Multiple: 2, Fraction: 1},
+		{Multiple: 1.5, Fraction: 0.40},
+		{Multiple: 3.0, Fraction: 0.80},
+		{Multiple: 5.0, Fraction: 1.00},
 	}
 }
 

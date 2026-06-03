@@ -33,12 +33,14 @@ func TestBuildHyperliquidProtectionPlanUsesDefaultTieredATR(t *testing.T) {
 	if plan.StopLossATRMult != 1 {
 		t.Errorf("StopLossATRMult = %g, want 1", plan.StopLossATRMult)
 	}
-	wantTiers := []hlProtectionTier{{Multiple: 1, Fraction: 0.5}, {Multiple: 2, Fraction: 1}}
+	// #870: default ladder retuned to a patient 3-rung 1.5×/3×/5× (40/80/100%).
+	wantTiers := []hlProtectionTier{{Multiple: 1.5, Fraction: 0.4}, {Multiple: 3, Fraction: 0.8}, {Multiple: 5, Fraction: 1}}
 	if !reflect.DeepEqual(plan.Tiers, wantTiers) {
 		t.Errorf("tiers = %+v, want %+v", plan.Tiers, wantTiers)
 	}
-	if !reflect.DeepEqual(plan.TPOIDs, []int64{101, 202}) {
-		t.Errorf("TP OIDs = %v, want [101 202]", plan.TPOIDs)
+	// 3-tier default pads the 2 existing OIDs with a fresh 0 slot (#870).
+	if !reflect.DeepEqual(plan.TPOIDs, []int64{101, 202, 0}) {
+		t.Errorf("TP OIDs = %v, want [101 202 0]", plan.TPOIDs)
 	}
 }
 
@@ -67,8 +69,8 @@ func TestBuildHyperliquidProtectionPlanManualStrategy(t *testing.T) {
 	if plan.Symbol != "ETH" || plan.Size != 0.4 || plan.StopLossATRMult != 1.5 {
 		t.Errorf("manual plan = %+v", plan)
 	}
-	if !reflect.DeepEqual(plan.TPOIDs, []int64{456, 789}) {
-		t.Errorf("manual TP OIDs = %v, want [456 789]", plan.TPOIDs)
+	if !reflect.DeepEqual(plan.TPOIDs, []int64{456, 789, 0}) {
+		t.Errorf("manual TP OIDs = %v, want [456 789 0]", plan.TPOIDs)
 	}
 }
 
@@ -676,10 +678,11 @@ func TestBuildHyperliquidProtectionPlanPadsTPArmedTiers(t *testing.T) {
 	if !ok {
 		t.Fatal("expected plan ok=true")
 	}
-	if want := []bool{true, true}; !reflect.DeepEqual(plan.TPArmedTiers, want) {
+	// #870: 3-tier default pads the 2-element armed/OID slices with a fresh slot.
+	if want := []bool{true, true, false}; !reflect.DeepEqual(plan.TPArmedTiers, want) {
 		t.Errorf("TPArmedTiers = %v, want %v", plan.TPArmedTiers, want)
 	}
-	if want := []int64{0, 300}; !reflect.DeepEqual(plan.TPOIDs, want) {
+	if want := []int64{0, 300, 0}; !reflect.DeepEqual(plan.TPOIDs, want) {
 		t.Errorf("TPOIDs = %v, want %v", plan.TPOIDs, want)
 	}
 	// Shorter TPArmedTiers slice pads with false (#749 / #716 contract).
@@ -688,7 +691,7 @@ func TestBuildHyperliquidProtectionPlanPadsTPArmedTiers(t *testing.T) {
 	if !ok {
 		t.Fatal("expected plan ok=true (padded armed tiers)")
 	}
-	if want := []bool{true, false}; !reflect.DeepEqual(plan.TPArmedTiers, want) {
+	if want := []bool{true, false, false}; !reflect.DeepEqual(plan.TPArmedTiers, want) {
 		t.Errorf("padded TPArmedTiers = %v, want %v", plan.TPArmedTiers, want)
 	}
 }
@@ -791,7 +794,7 @@ func TestTieredTPATRPricesForRegimeUsesFleetDefaults(t *testing.T) {
 		},
 	}
 	got := tieredTPATRPricesForRegime(sc, "long", 100, 10, "trending_up")
-	want := []float64{120, 140} // 2× and 4× ATR @ trending_up fleet baseline
+	want := []float64{115, 130, 150} // #870: ADX trending_up → choppy group (1.5×/3×/5× ATR)
 	if len(got) != len(want) {
 		t.Fatalf("len(prices)=%d, want %d; got=%v", len(got), len(want), got)
 	}

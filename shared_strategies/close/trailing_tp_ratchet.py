@@ -14,21 +14,44 @@ from _helpers import (
     float_from,
     tier_list_from_params,
 )
-from regime_atr import CANONICAL_TREND_REGIME_LABELS
+from regime_atr import CANONICAL_TREND_REGIME_LABELS, regime_close_default_group
 
-# DEFAULT_RATCHET_TIERS is the conservative fallback ladder (#866) used when a
-# trailing_tp_ratchet* close ref omits tp_tiers (or sets use_defaults:true). It
+# DEFAULT_RATCHET_TIERS is the conservative fallback ladder (#866) used when the
+# SCALAR trailing_tp_ratchet omits tp_tiers (or sets use_defaults:true). It
 # mirrors the Go single source of truth defaultTrailingRatchetTiers() in
-# scheduler/trailing_tp_ratchet.go — keep the two in sync. The regime variant
-# broadcasts this same ladder across every classifier label (per-regime
-# differentiation lands in #870). Precondition: the first rung tightens to
-# 1.5xATR, so a strategy using this default must set trailing_stop_atr_mult >=
-# 1.5 (else the Go loader rejects it via validateTrailingRatchetInitialTrail).
+# scheduler/trailing_tp_ratchet.go — keep the two in sync. Precondition: the
+# first rung tightens to 1.5xATR, so a strategy using this default must set
+# trailing_stop_atr_mult >= 1.5 (else the Go loader rejects it via
+# validateTrailingRatchetInitialTrail).
 DEFAULT_RATCHET_TIERS = [
     {"atr_multiple": 2.0, "trailing_mult_after": 1.5, "close_fraction": 0.0},
     {"atr_multiple": 2.5, "trailing_mult_after": 1.0, "close_fraction": 0.0},
     {"atr_multiple": 3.0, "trailing_mult_after": 0.5, "close_fraction": 0.0},
 ]
+
+# #870: per-quality-group default ratchet ladders for the REGIME variant
+# (trailing_tp_ratchet_regime) when tp_tiers is omitted / use_defaults:true.
+# Mirrors ratchetTierGroupDefaults in scheduler/trailing_tp_ratchet.go. Trend
+# groups (clean/choppy) are pure let-it-ride (close_fraction 0); ranging scales
+# out. Each group's first rung couples to that group's opening trail in
+# REGIME_ATR_DEFAULTS_TRAILING (clean 2.5 / choppy 2.0 / ranging 1.0).
+DEFAULT_RATCHET_TIERS_BY_GROUP = {
+    "clean": [
+        {"atr_multiple": 3.0, "trailing_mult_after": 1.5, "close_fraction": 0.0},
+        {"atr_multiple": 4.5, "trailing_mult_after": 1.0, "close_fraction": 0.0},
+        {"atr_multiple": 6.0, "trailing_mult_after": 0.5, "close_fraction": 0.0},
+    ],
+    "choppy": [
+        {"atr_multiple": 2.0, "trailing_mult_after": 1.5, "close_fraction": 0.0},
+        {"atr_multiple": 2.5, "trailing_mult_after": 1.0, "close_fraction": 0.0},
+        {"atr_multiple": 3.0, "trailing_mult_after": 0.5, "close_fraction": 0.0},
+    ],
+    "ranging": [
+        {"atr_multiple": 0.75, "trailing_mult_after": 1.0, "close_fraction": 0.4},
+        {"atr_multiple": 1.5, "trailing_mult_after": 0.75, "close_fraction": 0.8},
+        {"atr_multiple": 2.0, "trailing_mult_after": 0.5, "close_fraction": 1.0},
+    ],
+}
 
 
 def _first_present(d: dict, *keys: str):
@@ -136,8 +159,15 @@ def resolve_tiers_for_regime(
     """Resolve concrete tiers for the stamped regime label."""
     raw = tier_list_from_params(params)
     if raw is None:
-        # #866: omitted tp_tiers (or use_defaults:true) resolves to the system
-        # default ladder, broadcast across regimes for the regime variant.
+        # Omitted tp_tiers (or use_defaults:true) resolves to the system default
+        # ladder. #870: the regime variant resolves the per-quality-group ladder
+        # for the stamped regime; the scalar variant uses the single #866 default.
+        if regime_table:
+            group = regime_close_default_group(regime)
+            ladder = DEFAULT_RATCHET_TIERS_BY_GROUP.get(group) if group else None
+            if not ladder:
+                return [], []
+            return _parse_scalar_tiers([dict(t) for t in ladder])
         return _parse_scalar_tiers([dict(t) for t in DEFAULT_RATCHET_TIERS])
     if regime_table:
         if not isinstance(raw, dict):

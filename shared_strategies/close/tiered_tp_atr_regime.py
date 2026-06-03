@@ -19,9 +19,11 @@ from _helpers import (
     tier_list_from_params,
 )
 from regime_atr import (
+    REGIME_TP_TIER_GROUP_DEFAULTS,
     RegimeTierSpec,
     close_params_are_unified_regime,
     parse_regime_tp_tiers,
+    regime_close_default_group,
     resolve_regime_tier,
     unified_regime_scalar_params,
 )
@@ -63,6 +65,19 @@ def _resolve_tiers_for_regime(
 
     use_defaults = bool(params.get("use_defaults"))
     raw_tiers = tier_list_from_params(params)
+    if use_defaults and raw_tiers is None:
+        # #870: resolve the per-quality-group default ladder for the stamped
+        # regime directly. The ragged tier counts (clean 4 / choppy 3 / ranging
+        # 2) can't round-trip the positional spec union when the evaluator is
+        # invoked with the default ADX vocabulary, and the regime here may be a
+        # composite label. Mirrors Go's defaultRegimeTPTiersForRegime.
+        group = regime_close_default_group(regime)
+        ladder = REGIME_TP_TIER_GROUP_DEFAULTS.get(group) if group else None
+        if not ladder:
+            return [], []
+        resolved = sorted(((m, clamp_fraction(f)) for m, f in ladder), key=lambda p: p[0])
+        resolved[-1] = (resolved[-1][0], 1.0)
+        return resolved, []
     specs, errs = parse_regime_tp_tiers(raw_tiers, "tiered_tp_atr_regime", use_defaults)
     if errs:
         return [], errs

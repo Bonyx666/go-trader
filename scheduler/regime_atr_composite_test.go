@@ -197,12 +197,12 @@ func TestStrategyTPTiersForRegime_CompositeUseDefaults(t *testing.T) {
 		CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_regime", Params: map[string]interface{}{"use_defaults": true}},
 	}
 	tiers := strategyTPTiersForRegime(sc, "trending_up_clean")
-	if len(tiers) != 2 {
-		t.Fatalf("use_defaults composite must resolve 2 tiers, got %d: %v", len(tiers), tiers)
+	if len(tiers) != 4 {
+		t.Fatalf("use_defaults composite clean must resolve 4 tiers, got %d: %v", len(tiers), tiers)
 	}
-	// trending_up_clean maps to the trending_up baseline family (2.0, 4.0).
-	if tiers[0].Multiple != 2.0 || tiers[1].Multiple != 4.0 {
-		t.Fatalf("composite use_defaults baseline mismatch: %v", tiers)
+	// #870: trending_up_clean → clean group (2.5/4.0/5.5/7.0, cumulative).
+	if tiers[0].Multiple != 2.5 || tiers[3].Multiple != 7.0 {
+		t.Fatalf("composite use_defaults clean baseline mismatch: %v", tiers)
 	}
 }
 

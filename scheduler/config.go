@@ -1740,8 +1740,11 @@ func validateConfig(cfg *Config, skipLiveCredentialChecks bool) error {
 			if sc.TrailingStopATRMult != nil {
 				atrMult = *sc.TrailingStopATRMult
 			}
-			if fixedTrailingPct <= 0 && atrMult <= 0 {
-				errs = append(errs, fmt.Sprintf("%s: trailing_stop_min_move_pct requires trailing_stop_pct > 0 or trailing_stop_atr_mult > 0", prefix))
+			// #870: the regime ratchet owns its trail via trailing_stop_atr_regime
+			// rather than the scalar trailing_stop_atr_mult, so accept that too.
+			regimeTrail := sc.TrailingStopATRRegime != nil && !sc.TrailingStopATRRegime.IsZero()
+			if fixedTrailingPct <= 0 && atrMult <= 0 && !regimeTrail {
+				errs = append(errs, fmt.Sprintf("%s: trailing_stop_min_move_pct requires trailing_stop_pct > 0, trailing_stop_atr_mult > 0, or trailing_stop_atr_regime", prefix))
 			}
 		}
 

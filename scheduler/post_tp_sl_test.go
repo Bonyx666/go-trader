@@ -908,12 +908,13 @@ func TestRunPostTPStopLossAdjustment_TPATRFractionUsesDefaultTierMultiple(t *tes
 	if !runPostTPStopLossAdjustment(sc, state, "ETH", 110, nil, &mu, nil, nil, nil) {
 		t.Fatal("expected runPostTPStopLossAdjustment to apply")
 	}
-	// Default TP1 is 1×ATR; tp_atr_fraction=0.5 resolves to a 0.5×ATR trail.
-	if gotTrigger != 107.5 {
-		t.Fatalf("trigger=%v, want 107.5", gotTrigger)
+	// #870: default TP1 is 1.5×ATR; tp_atr_fraction=0.5 resolves to a 0.75×ATR
+	// trail → trigger = 110 - 0.75×5 = 106.25.
+	if gotTrigger != 106.25 {
+		t.Fatalf("trigger=%v, want 106.25", gotTrigger)
 	}
-	if pos.PostTPTrailingATRMult == nil || *pos.PostTPTrailingATRMult != 0.5 {
-		t.Fatalf("PostTPTrailingATRMult=%v, want 0.5", pos.PostTPTrailingATRMult)
+	if pos.PostTPTrailingATRMult == nil || *pos.PostTPTrailingATRMult != 0.75 {
+		t.Fatalf("PostTPTrailingATRMult=%v, want 0.75", pos.PostTPTrailingATRMult)
 	}
 }
 

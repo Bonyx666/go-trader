@@ -184,8 +184,8 @@ func TestFormatStrategyInspectionShowsResolvedTPSource(t *testing.T) {
 		"source:            stop_loss_atr_mult (explicit)",
 		"take_profit:",
 		"source:            close_strategy tiered_tp_atr",
-		"tiers:             [1× ATR @ 50%, 2× ATR @ 100%]",
-		"default (canonical [1×@50%, 2×@100%])",
+		"tiers:             [1.5× ATR @ 40%, 3× ATR @ 80%, 5× ATR @ 100%]",
+		"default (canonical [1.5×@40%, 3×@80%, 5×@100%])",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q.\nfull:\n%s", want, out)
@@ -247,7 +247,7 @@ func TestFormatStrategySummaryLineCompressesEverything(t *testing.T) {
 		"open=range_mean_revert",
 		"close=tiered_tp_atr",
 		"sl=stop_loss_atr_mult (explicit)",
-		"tp=tiered_tp_atr[2-tier]",
+		"tp=tiered_tp_atr[3-tier]",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("summary line missing %q: %s", want, line)
@@ -379,8 +379,10 @@ func TestFormatStrategySummaryLineRegimeTPTierCount(t *testing.T) {
 		StopLossATRMult: &mult,
 	}
 	line := formatStrategySummaryLine(sc, nil)
-	if !strings.Contains(line, "tp=tiered_tp_atr_regime[2-tier]") {
-		t.Errorf("expected 2-tier regime TP summary, got: %s", line)
+	// #870: fleet default is ragged per group (2/3/4 tiers); the summary reports
+	// the fleet maximum (clean group = 4 tiers).
+	if !strings.Contains(line, "tp=tiered_tp_atr_regime[4-tier]") {
+		t.Errorf("expected 4-tier regime TP summary, got: %s", line)
 	}
 }
 
