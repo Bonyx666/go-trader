@@ -403,6 +403,38 @@ If Discord enabled, wait for the first cycle and verify messages in configured c
 
 ---
 
+## Discord Slash Commands (#212)
+
+The bot registers global slash commands at startup (`scheduler/discord_commands.go`,
+wired in `main.go` via `DiscordNotifier.RegisterSlashCommands`). Global registration
+covers every guild the bot is in plus DMs; first-time command-shape changes can take up
+to ~1h to propagate.
+
+**Setup:** the bot must be invited with the `applications.commands` OAuth scope (in
+addition to `bot`) for the commands to appear. No code/config change — re-invite via the
+Discord developer portal OAuth2 URL generator.
+
+**Read-only** (usable in a guild OR a DM, by anyone):
+`/status`, `/health`, `/positions`, `/pnl`, `/leaderboard [top]`, `/circuit-breakers`,
+`/dead-strategies`, `/correlation`, `/logs [n]`. These read live in-process state via the
+`StatusServer` (no HTTP round-trip).
+
+> Note: `/logs` surfaces `journalctl` output to anyone in the guild — keep the bot in a
+> trusted channel.
+
+**Ops** (owner-only AND DM-only; restricted via command `Contexts: [BotDM]` and re-checked
+in the handler by `authorizeCommand`):
+- `/restart` — `systemctl restart go-trader` (ACKs, then this instance is replaced).
+- `/backtest <strategy> <symbol> [timeframe]` — runs `backtest/run_backtest.py --mode single`
+  (5-min timeout via `runPythonWithTimeout` + `shutdownReadOnlyCtx`); replies with a summary
+  and attaches the full report as `backtest.txt`.
+
+Auth lives in `authorizeCommand`; command set in `slashCommands()`; pure response builders
+(`format*Response`) are unit-tested in `discord_commands_test.go`. Registration failure is
+non-fatal (logged + owner DM).
+
+---
+
 ## TradingView Export
 
 Export SQLite trades to a TradingView portfolio transaction-import CSV:
