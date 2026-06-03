@@ -116,3 +116,49 @@ func TestFormatPnLResponse(t *testing.T) {
 		t.Errorf("expected a Total line, got: %s", got)
 	}
 }
+
+func TestFormatCircuitBreakersResponse(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	none := formatCircuitBreakersResponse(&AppState{Strategies: map[string]*StrategyState{}}, now)
+	if !strings.Contains(none, "No active") {
+		t.Errorf("expected no-breakers message, got: %s", none)
+	}
+
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-a": {ID: "hl-a", RiskState: RiskState{CircuitBreaker: true, CircuitBreakerUntil: now.Add(10 * time.Minute)}},
+		},
+		PortfolioRisk: PortfolioRiskState{KillSwitchActive: true},
+	}
+	got := formatCircuitBreakersResponse(state, now)
+	if !strings.Contains(got, "hl-a") {
+		t.Errorf("expected breaker for hl-a, got: %s", got)
+	}
+	if !strings.Contains(strings.ToLower(got), "kill switch") {
+		t.Errorf("expected kill-switch note, got: %s", got)
+	}
+}
+
+func TestFormatDeadStrategiesResponse(t *testing.T) {
+	state := &AppState{Strategies: map[string]*StrategyState{"hl-a": {ID: "hl-a"}, "hl-b": {ID: "hl-b"}}}
+	lifetime := map[string]LifetimeTradeStats{"hl-a": {PositionsOpened: 3}} // hl-b is dead
+	got := formatDeadStrategiesResponse(state, lifetime)
+	if !strings.Contains(got, "hl-b") || strings.Contains(got, "hl-a") {
+		t.Errorf("expected only hl-b listed as dead, got: %s", got)
+	}
+}
+
+func TestFormatCorrelationResponse(t *testing.T) {
+	if got := formatCorrelationResponse(nil); !strings.Contains(got, "No correlation") {
+		t.Errorf("expected nil-snapshot message, got: %s", got)
+	}
+	snap := &CorrelationSnapshot{
+		PortfolioGrossUSD: 1000,
+		Warnings:          []string{"BTC concentration 80%"},
+		Assets:            map[string]*AssetExposure{"BTC": {NetDeltaUSD: 800, ConcentrationPct: 80}},
+	}
+	got := formatCorrelationResponse(snap)
+	if !strings.Contains(got, "BTC") || !strings.Contains(got, "80") {
+		t.Errorf("expected BTC concentration, got: %s", got)
+	}
+}

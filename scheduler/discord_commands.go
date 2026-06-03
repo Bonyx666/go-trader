@@ -220,3 +220,81 @@ func formatPnLResponse(state *AppState, prices map[string]float64, lifetime map[
 	sb.WriteString(strings.Join(perStrat, "\n"))
 	return strings.TrimRight(sb.String(), "\n")
 }
+
+// formatCircuitBreakersResponse lists open per-strategy breakers + portfolio kill switch. Call under RLock.
+func formatCircuitBreakersResponse(state *AppState, now time.Time) string {
+	var lines []string
+	for _, id := range sortedAppStateIDs(state) {
+		rs := state.Strategies[id].RiskState
+		if rs.CircuitBreaker {
+			until := "no expiry set"
+			if !rs.CircuitBreakerUntil.IsZero() {
+				if rs.CircuitBreakerUntil.After(now) {
+					until = "clears in " + rs.CircuitBreakerUntil.Sub(now).Round(time.Second).String()
+				} else {
+					until = "expired (clears next cycle)"
+				}
+			}
+			lines = append(lines, fmt.Sprintf("  %s: OPEN (%s)", id, until))
+		}
+		if len(rs.PendingCircuitCloses) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s: pending circuit close (%d venue)", id, len(rs.PendingCircuitCloses)))
+		}
+	}
+	var sb strings.Builder
+	if state.PortfolioRisk.KillSwitchActive {
+		sb.WriteString(fmt.Sprintf("🛑 Portfolio kill switch ACTIVE (drawdown %.2f%%)\n", state.PortfolioRisk.CurrentDrawdownPct))
+	}
+	if len(lines) == 0 {
+		if sb.Len() == 0 {
+			return "No active circuit breakers."
+		}
+		return strings.TrimRight(sb.String(), "\n")
+	}
+	sb.WriteString("**Active circuit breakers**\n")
+	sb.WriteString(strings.Join(lines, "\n"))
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// formatDeadStrategiesResponse lists strategies that have never opened a position. Call under RLock.
+func formatDeadStrategiesResponse(state *AppState, lifetime map[string]LifetimeTradeStats) string {
+	var dead []string
+	for _, id := range sortedAppStateIDs(state) {
+		if lifetime[id].PositionsOpened == 0 {
+			dead = append(dead, "  "+id)
+		}
+	}
+	if len(dead) == 0 {
+		return "All strategies have opened at least one position."
+	}
+	return fmt.Sprintf("**Dead strategies (0 positions opened) — %d**\n%s", len(dead), strings.Join(dead, "\n"))
+}
+
+// formatCorrelationResponse renders the latest correlation/concentration snapshot.
+func formatCorrelationResponse(snap *CorrelationSnapshot) string {
+	if snap == nil {
+		return "No correlation snapshot yet (computed during the trading cycle)."
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("**Correlation / concentration** (gross $%.2f)\n", snap.PortfolioGrossUSD))
+	if len(snap.Warnings) > 0 {
+		sb.WriteString("⚠️ Warnings:\n")
+		for _, w := range snap.Warnings {
+			sb.WriteString("  " + w + "\n")
+		}
+	} else {
+		sb.WriteString("No warnings.\n")
+	}
+	assets := make([]string, 0, len(snap.Assets))
+	for a := range snap.Assets {
+		assets = append(assets, a)
+	}
+	sort.Slice(assets, func(i, j int) bool {
+		return snap.Assets[assets[i]].ConcentrationPct > snap.Assets[assets[j]].ConcentrationPct
+	})
+	for _, a := range assets {
+		e := snap.Assets[a]
+		sb.WriteString(fmt.Sprintf("  %s: net $%.2f, concentration %.1f%%\n", a, e.NetDeltaUSD, e.ConcentrationPct))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
