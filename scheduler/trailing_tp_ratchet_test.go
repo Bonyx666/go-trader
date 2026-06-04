@@ -516,6 +516,14 @@ func TestDefaultTrailingRatchetTiers_InternallyValid(t *testing.T) {
 	}
 }
 
+func TestRatchetTierGroupDefaults_InternallyValid(t *testing.T) {
+	for group, tiers := range ratchetTierGroupDefaults {
+		if errs := validateTrailingRatchetTierMonotonicity(tiers, group); len(errs) > 0 {
+			t.Errorf("group %q ladder must be monotonic, got: %v", group, errs)
+		}
+	}
+}
+
 func TestValidateTrailingTPRatchetClose_OmittedTiersUsesDefault(t *testing.T) {
 	trail := 2.0
 	for _, params := range []map[string]interface{}{
