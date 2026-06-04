@@ -105,6 +105,9 @@ def walk_forward_optimize(
     regime_period: int = 14,
     regime_adx_threshold: float = 20.0,
     allowed_regimes: Optional[List[str]] = None,
+    stop_loss_atr_mult: Optional[float] = None,
+    trailing_stop_atr_mult: Optional[float] = None,
+    close_strategies: Optional[List[dict]] = None,
 ) -> dict:
     """
     Walk-forward optimization.
@@ -149,6 +152,9 @@ def walk_forward_optimize(
         regime_enabled=regime_enabled, regime_period=regime_period,
         regime_adx_threshold=regime_adx_threshold,
         allowed_regimes=allowed_regimes,
+        stop_loss_atr_mult=stop_loss_atr_mult,
+        trailing_stop_atr_mult=trailing_stop_atr_mult,
+        close_strategies=close_strategies,
     )
     window_results = []
 
@@ -438,6 +444,20 @@ DEFAULT_PARAM_RANGES = {
     "donchian_breakout": {
         "entry_period": [10, 20, 30],
         "exit_period": [5, 10, 15],
+    },
+    "momentum_pro": {
+        "ema_fast": [13, 20, 26],
+        "ema_mid": [34, 50, 80],
+        "adx_threshold": [18.0, 20.0, 25.0],
+        "pullback_window": [4, 6, 8],
+        "vol_mult": [0.0, 1.2, 1.5],
+    },
+    "mean_reversion_pro": {
+        "lookback": [20, 30, 40],
+        "entry_std": [1.5, 2.0, 2.5],
+        "adx_max": [20.0, 25.0, 30.0],
+        "rsi_oversold": [25.0, 30.0, 35.0],
+        "rsi_overbought": [65.0, 70.0, 75.0],
     },
     "bear_pullback_st": {
         "ema_short": [13, 20, 26],

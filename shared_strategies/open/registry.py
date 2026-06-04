@@ -42,6 +42,8 @@ from sweep_squeeze_combo import sweep_squeeze_combo_core
 from adx_trend import adx_trend_core
 from bear_pullback_st import bear_pullback_st_core
 from donchian_breakout import donchian_breakout_core
+from momentum_pro import momentum_pro_core
+from mean_reversion_pro import mean_reversion_pro_core
 from session_breakout import session_breakout_core
 from vwap_rejection_st import vwap_rejection_st_core
 
@@ -1011,6 +1013,34 @@ def vwap_rejection_st_strategy(df: pd.DataFrame, **params) -> pd.DataFrame:
 
 
 @register(
+    "momentum_pro",
+    "Momentum Pro — trend-pullback entries in a stacked-EMA trend, ADX-confirmed, on a volume-backed resumption",
+    {
+        "ema_fast": 20, "ema_mid": 50, "ema_long": 200,
+        "adx_period": 14, "adx_threshold": 20.0,
+        "pullback_window": 6, "pullback_touch_buffer_pct": 0.0,
+        "vol_period": 20, "vol_mult": 1.2,
+    },
+)
+def momentum_pro_strategy(df: pd.DataFrame, **params) -> pd.DataFrame:
+    return momentum_pro_core(df, **params)
+
+
+@register(
+    "mean_reversion_pro",
+    "Mean Reversion Pro — z-score reversion gated by a no-trend ADX ceiling + RSI extreme confirmation",
+    {
+        "lookback": 30, "entry_std": 2.0,
+        "adx_period": 14, "adx_max": 25.0,
+        "rsi_period": 14, "rsi_oversold": 30.0, "rsi_overbought": 70.0,
+        "confirm_window": 3,
+    },
+)
+def mean_reversion_pro_strategy(df: pd.DataFrame, **params) -> pd.DataFrame:
+    return mean_reversion_pro_core(df, **params)
+
+
+@register(
     "hold",
     "Hold — always returns signal=0; used internally by type=manual strategies for the close-evaluator loop (#569)",
     {},
@@ -1037,6 +1067,7 @@ PLATFORM_ORDER: Dict[str, List[str]] = {
         "heikin_ashi_ema", "order_blocks", "vwap_reversion", "chart_pattern",
         "liquidity_sweeps", "parabolic_sar", "range_scalper",
         "sweep_squeeze_combo", "adx_trend", "donchian_breakout", "tema_cross",
+        "momentum_pro", "mean_reversion_pro",
         "hold",
     ],
     "futures": [
@@ -1048,6 +1079,6 @@ PLATFORM_ORDER: Dict[str, List[str]] = {
         "liquidity_sweeps", "parabolic_sar", "range_scalper",
         "sweep_squeeze_combo", "adx_trend", "delta_neutral_funding",
         "donchian_breakout", "session_breakout", "bear_pullback_st",
-        "vwap_rejection_st", "hold",
+        "vwap_rejection_st", "momentum_pro", "mean_reversion_pro", "hold",
     ],
 }

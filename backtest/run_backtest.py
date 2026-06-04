@@ -425,6 +425,9 @@ def run_walk_forward(
     regime_period: int = 14,
     regime_adx_threshold: float = 20.0,
     allowed_regimes: Optional[List[str]] = None,
+    stop_loss_atr_mult: Optional[float] = None,
+    trailing_stop_atr_mult: Optional[float] = None,
+    close_strategies: Optional[List[dict]] = None,
 ) -> Optional[dict]:
     """Run walk-forward optimization for a strategy."""
     reg = load_registry(registry)
@@ -464,6 +467,9 @@ def run_walk_forward(
         regime_period=regime_period,
         regime_adx_threshold=regime_adx_threshold,
         allowed_regimes=allowed_regimes,
+        stop_loss_atr_mult=stop_loss_atr_mult,
+        trailing_stop_atr_mult=trailing_stop_atr_mult,
+        close_strategies=close_strategies,
     )
 
     print(format_walk_forward_report(result))
@@ -530,6 +536,14 @@ def _build_parser() -> argparse.ArgumentParser:
                         metavar="LABEL",
                         help="Regime label to allow entries for (repeat for multiple). "
                              "Empty = allow all. Valid: trending_up, trending_down, ranging.")
+    parser.add_argument("--stop-loss-atr-mult", type=float, default=None,
+                        dest="stop_loss_atr_mult", metavar="MULT",
+                        help="Fixed ATR-multiple stop loss (e.g. 2.0). Applied in "
+                             "single and optimize/walk-forward modes.")
+    parser.add_argument("--trailing-stop-atr-mult", type=float, default=None,
+                        dest="trailing_stop_atr_mult", metavar="MULT",
+                        help="Trailing ATR-multiple stop (e.g. 2.5). Applied in "
+                             "optimize/walk-forward mode.")
     return parser
 
 
@@ -656,7 +670,10 @@ def main():
                                  regime_enabled=args.regime_enabled,
                                  regime_period=args.regime_period,
                                  regime_adx_threshold=args.regime_adx_threshold,
-                                 allowed_regimes=args.allowed_regimes)
+                                 allowed_regimes=args.allowed_regimes,
+                                 stop_loss_atr_mult=args.stop_loss_atr_mult,
+                                 trailing_stop_atr_mult=args.trailing_stop_atr_mult,
+                                 close_strategies=close_refs)
         else:
             run_walk_forward(args.strategy, args.symbol, args.timeframe,
                              args.since, args.splits, args.capital,
@@ -664,7 +681,10 @@ def main():
                              regime_enabled=args.regime_enabled,
                              regime_period=args.regime_period,
                              regime_adx_threshold=args.regime_adx_threshold,
-                             allowed_regimes=args.allowed_regimes)
+                             allowed_regimes=args.allowed_regimes,
+                             stop_loss_atr_mult=args.stop_loss_atr_mult,
+                             trailing_stop_atr_mult=args.trailing_stop_atr_mult,
+                             close_strategies=close_refs)
 
 
 if __name__ == "__main__":
