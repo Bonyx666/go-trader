@@ -462,6 +462,11 @@ DEFAULT_PARAM_RANGES = {
         "rsi_oversold": [25.0, 30.0, 35.0],
         "rsi_overbought": [65.0, 70.0, 75.0],
     },
+    "consolidation_range": {
+        "box_width_pct": [0.03, 0.05, 0.08, 0.10],
+        "min_bars": [12, 16, 24],
+        "edge_entry_frac": [0.1, 0.2, 0.33],
+    },
     "bear_pullback_st": {
         "ema_short": [13, 20, 26],
         "ema_mid": [34, 50, 80],

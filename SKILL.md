@@ -414,15 +414,24 @@ wired in `main.go` via `DiscordNotifier.RegisterSlashCommands`). Global registra
 covers every guild the bot is in plus DMs; first-time command-shape changes can take up
 to ~1h to propagate.
 
+**Namespacing (#891):** every command is registered under the `go-trader-` prefix
+(`commandPrefix`) so the bot's commands are unambiguous in shared guilds (e.g.
+`/go-trader-status`, `/go-trader-restart`). The prefix is the wire name only —
+`slashCommands()` builds each command as `commandPrefix+<id>` and `interactionCreate`
+strips it back to the bare `<id>` before auth/dispatch, so `readOnlyCommandNames`,
+`opsCommandNames`, and the dispatch `switch` all operate on the unprefixed IDs.
+`commandPrefix` is the single source of truth; subcommand/option names are not prefixed.
+
 **Setup:** the bot must be invited with the `applications.commands` OAuth scope (in
 addition to `bot`) for the commands to appear. No code/config change — re-invite via the
 Discord developer portal OAuth2 URL generator.
 
 **Read-only** (usable in a guild OR a DM, by anyone):
-`/status`, `/health`, `/positions`, `/pnl`, `/leaderboard [top]`, `/circuit-breakers`,
-`/dead-strategies`, `/correlation`. These read live in-process state via the
-`StatusServer` (no HTTP round-trip). The four that fetch live marks (`/status`,
-`/positions`, `/pnl`, `/leaderboard`) use a deferred ACK + follow-up so they don't blow
+`/go-trader-status`, `/go-trader-health`, `/go-trader-positions`, `/go-trader-pnl`,
+`/go-trader-leaderboard [top]`, `/go-trader-circuit-breakers`, `/go-trader-dead-strategies`,
+`/go-trader-correlation`. These read live in-process state via the
+`StatusServer` (no HTTP round-trip). The four that fetch live marks (`/go-trader-status`,
+`/go-trader-positions`, `/go-trader-pnl`, `/go-trader-leaderboard`) use a deferred ACK + follow-up so they don't blow
 Discord's 3-second interaction deadline (`fetchLiveMarkPrices` spawns a Python subprocess +
 venue HTTP); the rest answer inline. Replies are public in-channel by default; set
 `discord.ephemeral_replies: true` in config to make read-only replies ephemeral
@@ -430,16 +439,16 @@ venue HTTP); the rest answer inline. Replies are public in-channel by default; s
 
 **Ops** (owner-only AND DM-only; restricted via command `Contexts: [BotDM]` and re-checked
 in the handler by `authorizeCommand`):
-- `/logs [n]` — last N `journalctl -u go-trader` lines. Owner-DM-only because daemon logs
+- `/go-trader-logs [n]` — last N `journalctl -u go-trader` lines. Owner-DM-only because daemon logs
   can carry wallet addresses / error payloads (sharper exposure than P&L/positions).
-- `/restart` — `systemctl restart go-trader` (ACKs, then this instance is replaced).
-- `/backtest <strategy> <symbol> [timeframe]` — runs `backtest/run_backtest.py --mode single`
+- `/go-trader-restart` — `systemctl restart go-trader` (ACKs, then this instance is replaced).
+- `/go-trader-backtest <strategy> <symbol> [timeframe]` — runs `backtest/run_backtest.py --mode single`
   (5-min timeout via `runPythonWithTimeout` + `shutdownReadOnlyCtx`; holds one of 4
   `pythonSemaphore` slots while running); replies with a summary and attaches the full
   report as `backtest.txt`.
-- `/report-an-issue <title> <body> [label]` — files a GitHub issue against `discord.report_repo`
+- `/go-trader-report-an-issue <title> <body> [label]` — files a GitHub issue against `discord.report_repo`
   (default `richkuo/go-trader`) via the REST API (`discord_report.go`: `buildIssueRequest`
-  builds the payload + a "Filed via /report-an-issue" footer; `createGitHubIssue` POSTs and returns
+  builds the payload + a "Filed via /go-trader-report-an-issue" footer; `createGitHubIssue` POSTs and returns
   the issue URL). Defers the ACK because the GitHub round-trip can exceed Discord's 3s
   deadline. Token resolves from `GO_TRADER_GITHUB_TOKEN`, then `GITHUB_TOKEN`, then
   `discord.report_github_token` (env preferred; keep the secret in `/opt/go-trader/.env`).

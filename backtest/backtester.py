@@ -1219,6 +1219,11 @@ class Backtester:
                 sl_high_water_px = 0.0
                 continue
 
+            # NOTE: this signal path is long/flat only — signal == 1 opens a
+            # long, signal == -1 only *closes* it; a short is never opened. So
+            # OOS validation of bidirectional strategies (momentum_pro,
+            # mean_reversion_pro, consolidation_range) exercises the LONG side
+            # only; their live short signals are not covered by backtest.
             if signal == 1 and position == 0 and not regime_blocked:
                 # BUY — go long with all available cash
                 effective_price = fill_price * (1 + self.slippage_pct)

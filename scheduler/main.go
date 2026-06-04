@@ -2118,7 +2118,7 @@ func main() {
 				}
 				chTrades := channelTrades[chKey]
 				// Per-channel summary cadence (#30). Legacy default: continuous
-				// channel types (options/perps/futures) post every channel run; spot
+				// channel types (options/perps/futures/manual) post every channel run; spot
 				// posts hourly. Override per channel via cfg.SummaryFrequency.
 				// Trades always force a post so operators see executions
 				// immediately regardless of cadence.
