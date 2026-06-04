@@ -13,6 +13,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// commandPrefix namespaces every Discord slash command away from other bots in
+// the same guild (#891). It is the bot's wire name only: slashCommands() builds
+// each registered command as commandPrefix+<id>, and interactionCreate strips it
+// back to the bare <id> before auth/dispatch, so readOnlyCommandNames,
+// opsCommandNames, and the dispatch switch all keep operating on bare command
+// IDs. Keep the prefix defined here as the single source of truth.
+const commandPrefix = "go-trader-"
+
 // readOnlyCommandNames are usable in a guild or in DMs by anyone.
 var readOnlyCommandNames = map[string]bool{
 	"status":           true,
@@ -382,52 +390,56 @@ func dmContext() *[]discordgo.InteractionContextType {
 }
 
 // slashCommands returns the full set of application commands to register globally.
+// slashCommands builds the registered command set. Every top-level Name carries
+// commandPrefix (#891) so the bot's commands are namespaced in shared guilds;
+// interactionCreate strips the prefix back to the bare ID for auth/dispatch.
+// Subcommand and option names are not prefixed — only the top-level command.
 func slashCommands() []*discordgo.ApplicationCommand {
 	return []*discordgo.ApplicationCommand{
-		{Name: "status", Description: "Live portfolio status (cash, positions, value, regime)"},
-		{Name: "health", Description: "Daemon health: running, last cycle, version"},
-		{Name: "positions", Description: "Open positions across platforms"},
-		{Name: "pnl", Description: "Portfolio P&L (total, per-platform, per-strategy)"},
-		{Name: "leaderboard", Description: "Strategies ranked by P&L%", Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "status", Description: "Live portfolio status (cash, positions, value, regime)"},
+		{Name: commandPrefix + "health", Description: "Daemon health: running, last cycle, version"},
+		{Name: commandPrefix + "positions", Description: "Open positions across platforms"},
+		{Name: commandPrefix + "pnl", Description: "Portfolio P&L (total, per-platform, per-strategy)"},
+		{Name: commandPrefix + "leaderboard", Description: "Strategies ranked by P&L%", Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionInteger, Name: "top", Description: "How many to show (default 5)"},
 		}},
-		{Name: "circuit-breakers", Description: "Active circuit breakers and kill-switch state"},
-		{Name: "dead-strategies", Description: "Strategies that have never opened a position"},
-		{Name: "correlation", Description: "Correlation / concentration warnings"},
-		{Name: "logs", Description: "Recent journalctl lines (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "circuit-breakers", Description: "Active circuit breakers and kill-switch state"},
+		{Name: commandPrefix + "dead-strategies", Description: "Strategies that have never opened a position"},
+		{Name: commandPrefix + "correlation", Description: "Correlation / concentration warnings"},
+		{Name: commandPrefix + "logs", Description: "Recent journalctl lines (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionInteger, Name: "n", Description: "Number of lines (default 50, max 200)"},
 		}},
-		{Name: "restart", Description: "Restart the go-trader service (owner DM only)", Contexts: dmContext()},
-		{Name: "report-an-issue", Description: "File a GitHub issue (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "restart", Description: "Restart the go-trader service (owner DM only)", Contexts: dmContext()},
+		{Name: commandPrefix + "report-an-issue", Description: "File a GitHub issue (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "title", Description: "Issue title", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "body", Description: "Issue description", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "label", Description: "Optional label (applied if it exists on the repo)"},
 		}},
-		{Name: "backtest", Description: "Run a single backtest (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "backtest", Description: "Run a single backtest (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "strategy", Description: "Strategy name", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "symbol", Description: "Symbol, e.g. BTC/USDT", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "timeframe", Description: "Timeframe (default 1h)"},
 		}},
 		// Mutating ops — owner-DM-only (#868). Restricted by Contexts; re-checked in the handler.
-		{Name: "config", Description: "Show or change configuration (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "config", Description: "Show or change configuration (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "show", Description: "Show the current config (secrets redacted)"},
 			{Type: discordgo.ApplicationCommandOptionSubCommand, Name: "set", Description: "Set a config key", Options: []*discordgo.ApplicationCommandOption{
 				{Type: discordgo.ApplicationCommandOptionString, Name: "key", Description: "e.g. interval_seconds or strategies.<id>.leverage", Required: true},
 				{Type: discordgo.ApplicationCommandOptionString, Name: "value", Description: "New value", Required: true},
 			}},
 		}},
-		{Name: "add-strategy", Description: "Add a strategy to the config (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "add-strategy", Description: "Add a strategy to the config (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "name", Description: "Strategy name, e.g. momentum", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "platform", Description: "hyperliquid or binanceus", Required: true},
 			{Type: discordgo.ApplicationCommandOptionString, Name: "asset", Description: "Ticker, e.g. BTC", Required: true},
 		}},
-		{Name: "remove-strategy", Description: "Remove a strategy from the config (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "remove-strategy", Description: "Remove a strategy from the config (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "id", Description: "Strategy ID to remove", Required: true},
 		}},
-		{Name: "add-platform", Description: "Guided platform setup instructions (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "add-platform", Description: "Guided platform setup instructions (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "name", Description: "Platform name, e.g. hyperliquid", Required: true},
 		}},
-		{Name: "paper-to-live", Description: "Switch a strategy from paper to live (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
+		{Name: commandPrefix + "paper-to-live", Description: "Switch a strategy from paper to live (owner DM only)", Contexts: dmContext(), Options: []*discordgo.ApplicationCommandOption{
 			{Type: discordgo.ApplicationCommandOptionString, Name: "strategy", Description: "Strategy ID to switch to live", Required: true},
 		}},
 	}
@@ -459,7 +471,9 @@ func (d *DiscordNotifier) interactionCreate(s *discordgo.Session, i *discordgo.I
 		return
 	}
 	data := i.ApplicationCommandData()
-	name := data.Name
+	// Commands register under commandPrefix (#891); strip it to the bare command
+	// ID so auth + dispatch below operate on the unprefixed names.
+	name := strings.TrimPrefix(data.Name, commandPrefix)
 	ok, reason := authorizeCommand(name, interactionUserID(i), i.GuildID, d.ownerID)
 	if !ok {
 		respondEphemeral(s, i, reason)
@@ -505,7 +519,7 @@ func (d *DiscordNotifier) interactionCreate(s *discordgo.Session, i *discordgo.I
 		case "set":
 			d.handleConfigSet(s, i, subOpts)
 		default:
-			respondEphemeral(s, i, "usage: /config show | /config set <key> <value>")
+			respondEphemeral(s, i, "usage: /go-trader-config show | /go-trader-config set <key> <value>")
 		}
 	case "add-strategy":
 		d.handleAddStrategy(s, i, data.Options)

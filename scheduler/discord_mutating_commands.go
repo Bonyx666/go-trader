@@ -165,7 +165,7 @@ func buildAddStrategyEntry(name, platform, asset string) (string, json.RawMessag
 			direction = DirectionBoth
 		}
 		// No explicit SL field: all-omitted defaults to 1.0×ATR + max_drawdown_pct backstop.
-		// Set a stop via `/config set strategies.<id>.stop_loss_atr_mult <val>` before /paper-to-live.
+		// Set a stop via `/go-trader-config set strategies.<id>.stop_loss_atr_mult <val>` before /go-trader-paper-to-live.
 		obj = map[string]interface{}{
 			"id":               id,
 			"type":             "perps",
@@ -537,11 +537,11 @@ func platformSetupGuide(name string) (string, error) {
 	sb.WriteString("Credentials are loaded from the environment, never the config file, so this command writes no secrets to disk. To finish setup:\n")
 	sb.WriteString(fmt.Sprintf("1. Add the platform's API credentials to `/opt/go-trader/.env` (the exact env var names are in `platforms/%s/adapter.py` and `shared_scripts/check_%s.py`).\n", n, n))
 	if addable {
-		sb.WriteString(fmt.Sprintf("2. Add a strategy: `/add-strategy <name> %s <asset>` (created in paper mode; promote later with `/paper-to-live`).\n", n))
+		sb.WriteString(fmt.Sprintf("2. Add a strategy: `/go-trader-add-strategy <name> %s <asset>` (created in paper mode; promote later with `/go-trader-paper-to-live`).\n", n))
 	} else {
-		sb.WriteString("2. Add a strategy via the init wizard (`go-trader init`) — `/add-strategy` only generates hyperliquid + binanceus entries.\n")
+		sb.WriteString("2. Add a strategy via the init wizard (`go-trader init`) — `/go-trader-add-strategy` only generates hyperliquid + binanceus entries.\n")
 	}
-	sb.WriteString("3. Restart go-trader (`/restart`) so the new credentials and strategy load.\n")
+	sb.WriteString("3. Restart go-trader (`/go-trader-restart`) so the new credentials and strategy load.\n")
 	return sb.String(), nil
 }
 
@@ -713,7 +713,7 @@ func (d *DiscordNotifier) handleConfigSet(s *discordgo.Session, i *discordgo.Int
 	key := optionString(opts, "key", "")
 	value := optionString(opts, "value", "")
 	if key == "" {
-		followupText(s, i, "usage: /config set <key> <value>")
+		followupText(s, i, "usage: /go-trader-config set <key> <value>")
 		return
 	}
 	kind, id, field := classifyConfigSetKey(key)
@@ -801,7 +801,7 @@ func (d *DiscordNotifier) handleRemoveStrategy(s *discordgo.Session, i *discordg
 	}
 	id := optionString(opts, "id", "")
 	if id == "" {
-		followupText(s, i, "usage: /remove-strategy <id>")
+		followupText(s, i, "usage: /go-trader-remove-strategy <id>")
 		return
 	}
 	if !d.confirmDestructive(interactionUserID(i), fmt.Sprintf("Remove strategy `%s` from the config? It stops trading after restart. Its open positions and trade history in the state DB are NOT touched.", id)) {
@@ -842,7 +842,7 @@ func (d *DiscordNotifier) handlePaperToLive(s *discordgo.Session, i *discordgo.I
 	}
 	id := optionString(opts, "strategy", "")
 	if id == "" {
-		followupText(s, i, "usage: /paper-to-live <strategy>")
+		followupText(s, i, "usage: /go-trader-paper-to-live <strategy>")
 		return
 	}
 	if !d.confirmDestructive(interactionUserID(i), fmt.Sprintf("⚠️ Switch strategy `%s` from PAPER to LIVE? After restart it places **real orders with real funds**.", id)) {

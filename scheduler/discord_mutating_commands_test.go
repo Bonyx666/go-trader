@@ -324,7 +324,7 @@ func TestPlatformSetupGuide(t *testing.T) {
 	if err != nil {
 		t.Fatalf("guide: %v", err)
 	}
-	if !strings.Contains(guide, "/opt/go-trader/.env") || !strings.Contains(guide, "/add-strategy") {
+	if !strings.Contains(guide, "/opt/go-trader/.env") || !strings.Contains(guide, "/go-trader-add-strategy") {
 		t.Errorf("hyperliquid guide missing setup steps: %s", guide)
 	}
 	// Non-addable platform still produces a guide but points to the wizard.
