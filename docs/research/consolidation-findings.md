@@ -260,10 +260,11 @@ filters toggle. Costs modeled at 5 bps/side (fee + slippage).
 
 ### Verdict
 
-**Do not build the strategy as specified.** Across 1h/4h/1d and 5 assets, after realistic
-costs there is no robust, generalizable edge. The mean-reversion thesis fails to fees; the
-only positive (BTC 1d breakout capture) does not replicate on other assets and is
-small-sample. The research did its job: it prevented building a losing strategy.
+**No robust, generalizable (multi-asset) edge at default params.** Across 1h/4h/1d and 5
+assets, after realistic costs there is no edge that holds across assets. The mean-reversion
+thesis fails to fees; the only positive (BTC 1d breakout capture) does not replicate on other
+assets and is small-sample. (Later revisited under a BTC-only scope — see the parameter sweep
+and reconciliation sections below; the strategy is shipped as a tunable BTC baseline.)
 
 ### Re-test at 0.02% round-trip fees (low-cost assumption)
 
@@ -323,12 +324,16 @@ BTC 4h since 2021:
 Both **contradict the research sim** (which showed PF 1.10–1.34). The gap is the engine
 mechanics: the research sim was idealized (enter once per setup, clean fixed trail), while
 the production engine enters on every edge bar and trails differently. The thin sim edge did
-not survive the real engine. **No further config tweaking was done — chasing a green backtest
-by tuning the config is overfitting.**
+not survive the real engine. No automated config tweaking was done to chase a green backtest
+(that would be overfitting) — the parameter space is left open for deliberate, market-aware
+tuning.
 
-**Verdict: do not deploy.** The implementation is wired, builds, and runs (paper smoke OK),
-but the production backtest is a clear loser. The research-grade edge was an artifact of an
-over-simplified simulator. Code is kept for reference; the strategy is not viable as built.
+**Verdict: a valid but losing strategy at the default params.** The implementation is wired,
+builds, and runs (paper smoke OK); the default-param production backtest is a loser. It ships
+as a **tunable baseline**, not a turnkey edge: the mechanics (range-edge entry, ATR trailing
+exit, regime gating) are sound and selectable, and users can adjust box width, min_bars, stop,
+trail, timeframe, and filters per market to search for a profitable configuration. Backtest
+any candidate config with `run_backtest.py` before live use; do not run the defaults live as-is.
 
 ## Overall conclusions (Phases 1–4)
 

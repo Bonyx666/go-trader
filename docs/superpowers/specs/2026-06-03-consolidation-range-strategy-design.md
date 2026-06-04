@@ -7,12 +7,15 @@
 > - Exit: **`tp1_frac = 0` (NO scale-out at mean)** — trail the FULL position; initial stop
 >   **0.75× ATR**, trailing stop **1.5× ATR** (hybrid ratchet).
 > - **No drift filter, no regime/ADX gate** (both reduced performance).
-> - Validation: out-of-sample PF 1.34; walk-forward 4/5 folds +EV; holds to 0.06% fees.
-> - Build this, then paper-trade. Sections below are the original (rejected) mean-reversion
+> - Research sim looked positive (OOS PF 1.34; walk-forward 4/5 folds) BUT the production
+>   `run_backtest.py` engine LOSES at these defaults (~-40% to -47%, PF <1) — the sim was
+>   idealized. Shipped as a **tunable baseline**, not a turnkey edge: tune box/stop/trail
+>   per market and backtest before live use. Sections below are the original mean-reversion
 >   thesis, kept for context.
 
 **Date:** 2026-06-03
-**Status:** Validated (BTC 4h breakout config); original mean-reversion design rejected
+**Status:** Implemented as a tunable baseline (loses at default params on the production
+backtester); original mean-reversion design rejected
 **Depends on:** consolidation research (Phases 1–4, `docs/research/consolidation-findings.md`)
 **Platform:** Hyperliquid perps (needs native shorts); paper + backtest parity required.
 

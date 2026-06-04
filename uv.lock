@@ -984,7 +984,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "ccxt" },
     { name = "hyperliquid-python-sdk" },
-    { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyotp" },
@@ -993,6 +992,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+research = [
+    { name = "matplotlib" },
+]
 test = [
     { name = "pytest" },
     { name = "pytest-mock" },
@@ -1002,7 +1004,7 @@ test = [
 requires-dist = [
     { name = "ccxt", specifier = ">=4.5.37" },
     { name = "hyperliquid-python-sdk", specifier = ">=0.4.0" },
-    { name = "matplotlib", specifier = ">=3.8.0" },
+    { name = "matplotlib", marker = "extra == 'research'", specifier = ">=3.8.0" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pandas", specifier = ">=3.0.0" },
     { name = "pyotp", specifier = ">=2.9.0" },
@@ -1011,7 +1013,7 @@ requires-dist = [
     { name = "robin-stocks", specifier = ">=3.0.0" },
     { name = "yfinance", specifier = ">=0.2.0" },
 ]
-provides-extras = ["test"]
+provides-extras = ["test", "research"]
 
 [[package]]
 name = "hexbytes"

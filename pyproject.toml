@@ -11,13 +11,17 @@ dependencies = [
     "robin-stocks>=3.0.0",
     "pyotp>=2.9.0",
     "yfinance>=0.2.0",
-    "matplotlib>=3.8.0",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=8.0.0",
     "pytest-mock>=3.14.0",
+]
+# Charts for the consolidation research scripts only; not needed by the
+# production scheduler. Install with: uv sync --extra research
+research = [
+    "matplotlib>=3.8.0",
 ]
 
 [tool.pytest.ini_options]

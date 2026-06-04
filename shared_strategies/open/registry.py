@@ -1011,7 +1011,7 @@ def vwap_rejection_st_strategy(df: pd.DataFrame, **params) -> pd.DataFrame:
 
 @register(
     "consolidation_range",
-    "Consolidation Range (breakout follower) — enter near a consolidation box edge; tight stop + full ATR trailing ratchet rides the breakout (BTC 4h)",
+    "Consolidation Range — enters at the edges of a consolidation box (long near the bottom, short near the top); exit via a trailing ATR stop. NOTE: default params LOSE in run_backtest.py (~-40% to -47% on BTC 4h, see docs/research/consolidation-findings.md) — ship as a tunable baseline, adjust box width / stop / trail per market before live use",
     {"box_width_pct": 0.05, "min_bars": 16, "edge_entry_frac": 0.2},
     platforms=("futures",),
 )
