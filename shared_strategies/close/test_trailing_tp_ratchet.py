@@ -113,7 +113,7 @@ def test_omitted_tp_tiers_resolves_system_default(ratchet):
     assert e1 == [] and e2 == []
     assert scalar == regime
     assert [t[0] for t in scalar] == [2.0, 2.5, 3.0]
-    assert [t[2] for t in scalar] == [1.5, 1.0, 0.5]
+    assert [t[2] for t in scalar] == [1.5, 1.0, 0.8]
     assert all(t[1] == 0.0 for t in scalar)
 
 
@@ -123,7 +123,7 @@ def test_default_ratchet_tiers_constant_matches_registry(ratchet, registry):
     assert registry.build_close_registry  # registry import smoke
     advertised = ratchet.DEFAULT_RATCHET_TIERS
     assert [t["atr_multiple"] for t in advertised] == [2.0, 2.5, 3.0]
-    assert [t["trailing_mult_after"] for t in advertised] == [1.5, 1.0, 0.5]
+    assert [t["trailing_mult_after"] for t in advertised] == [1.5, 1.0, 0.8]
 
 
 def test_registry_lists_new_strategies(registry):

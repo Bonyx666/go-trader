@@ -580,13 +580,13 @@ func TestTrailingRatchetTiersForRegime_OmittedReturnsDefault(t *testing.T) {
 		{"scalar", "trailing_tp_ratchet", "", defaultTrailingRatchetTiers()},
 		// #870: the regime variant resolves the per-quality-group ladder.
 		{"regime-clean", "trailing_tp_ratchet_regime", "trending_up_clean", []trailingRatchetTier{
-			{ATRMultiple: 3.0, TrailingMultAfter: 1.5}, {ATRMultiple: 4.5, TrailingMultAfter: 1.0}, {ATRMultiple: 6.0, TrailingMultAfter: 0.5},
+			{ATRMultiple: 3.0, TrailingMultAfter: 1.5}, {ATRMultiple: 4.5, TrailingMultAfter: 1.0}, {ATRMultiple: 6.0, TrailingMultAfter: 0.8},
 		}},
 		{"regime-choppy", "trailing_tp_ratchet_regime", "trending_up", []trailingRatchetTier{
-			{ATRMultiple: 2.0, TrailingMultAfter: 1.5}, {ATRMultiple: 2.5, TrailingMultAfter: 1.0}, {ATRMultiple: 3.0, TrailingMultAfter: 0.5},
+			{ATRMultiple: 2.0, TrailingMultAfter: 1.5}, {ATRMultiple: 2.5, TrailingMultAfter: 1.0}, {ATRMultiple: 3.0, TrailingMultAfter: 0.8},
 		}},
 		{"regime-ranging", "trailing_tp_ratchet_regime", "ranging_quiet", []trailingRatchetTier{
-			{ATRMultiple: 0.75, CloseFraction: 0.4, TrailingMultAfter: 1.0}, {ATRMultiple: 1.5, CloseFraction: 0.8, TrailingMultAfter: 0.75}, {ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.5},
+			{ATRMultiple: 0.75, CloseFraction: 0.4, TrailingMultAfter: 1.0}, {ATRMultiple: 1.5, CloseFraction: 0.8, TrailingMultAfter: 0.75}, {ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.75},
 		}},
 	}
 	for _, tc := range cases {

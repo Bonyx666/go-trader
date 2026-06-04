@@ -81,7 +81,7 @@ var ratchetTierGroupDefaults = map[string][]trailingRatchetTier{
 	"ranging": {
 		{ATRMultiple: 0.75, CloseFraction: 0.4, TrailingMultAfter: 1.0},
 		{ATRMultiple: 1.5, CloseFraction: 0.8, TrailingMultAfter: 0.75},
-		{ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.8},
+		{ATRMultiple: 2.0, CloseFraction: 1.0, TrailingMultAfter: 0.75},
 	},
 }
 

@@ -49,7 +49,7 @@ DEFAULT_RATCHET_TIERS_BY_GROUP = {
     "ranging": [
         {"atr_multiple": 0.75, "trailing_mult_after": 1.0, "close_fraction": 0.4},
         {"atr_multiple": 1.5, "trailing_mult_after": 0.75, "close_fraction": 0.8},
-        {"atr_multiple": 2.0, "trailing_mult_after": 0.8, "close_fraction": 1.0},
+        {"atr_multiple": 2.0, "trailing_mult_after": 0.75, "close_fraction": 1.0},
     ],
 }
 
