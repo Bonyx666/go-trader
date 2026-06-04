@@ -618,7 +618,8 @@ def breakout_strategy(df: pd.DataFrame, lookback: int = 20, atr_period: int = 14
         (result["high"] - result["close"].shift(1)).abs(),
         (result["low"] - result["close"].shift(1)).abs(),
     ], axis=1).max(axis=1)
-    result["atr"] = tr.rolling(window=atr_period).mean()
+    _atr = tr.rolling(window=atr_period).mean()
+    result["atr"] = _atr.where(_atr < 1, _atr.round(0))
     result["signal"] = 0
     breakout_up = (result["close"] > result["high_roll"].shift(1)) & (tr > result["atr"] * atr_multiplier)
     result.loc[breakout_up & ~breakout_up.shift(1, fill_value=False), "signal"] = 1
@@ -639,7 +640,8 @@ def atr_breakout_strategy(df: pd.DataFrame, atr_period: int = 14, multiplier: fl
         (result["high"] - result["close"].shift(1)).abs(),
         (result["low"] - result["close"].shift(1)).abs(),
     ], axis=1).max(axis=1)
-    result["atr"] = tr.rolling(window=atr_period).mean()
+    _atr = tr.rolling(window=atr_period).mean()
+    result["atr"] = _atr.where(_atr < 1, _atr.round(0))
     prev_close = result["close"].shift(1)
     upper = prev_close + (multiplier * result["atr"])
     lower = prev_close - (multiplier * result["atr"])

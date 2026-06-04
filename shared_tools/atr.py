@@ -25,7 +25,8 @@ def standard_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
         [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
         axis=1,
     ).max(axis=1)
-    return tr.rolling(window=period).mean()
+    atr = tr.rolling(window=period).mean()
+    return atr.where(atr < 1, atr.round(0))
 
 
 def ensure_atr_indicator(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
