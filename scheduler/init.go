@@ -72,6 +72,8 @@ var knownShortNames = map[string]string{
 	"session_breakout":      "sbo",
 	"bear_pullback_st":      "bps",
 	"vwap_rejection_st":     "vrs",
+	"momentum_pro":          "mompro",
+	"mean_reversion_pro":    "mrpro",
 	"consolidation_range":   "cr",
 }
 
@@ -88,6 +90,8 @@ var bidirectionalPerpsStrategies = map[string]bool{
 	"liquidity_sweeps":    true, // emits short on stop-hunt wicks above swing highs (#649)
 	"bear_pullback_st":    true, // dedicated short-only strategy for bear-market rally rejections (#651)
 	"vwap_rejection_st":   true, // dedicated short-only strategy for VWAP/EMA rally rejections in bearish regime (#652)
+	"momentum_pro":        true, // emits short on stacked-bearish-EMA trend-pullback breakdowns
+	"mean_reversion_pro":  true, // emits short on overbought reversion in no-trend regimes
 	"consolidation_range": true, // emits short at the top edge of a consolidation box (range-edge mean-reversion)
 }
 
@@ -135,6 +139,8 @@ var defaultSpotStrategies = []stratDef{
 	{ID: "adx_trend", ShortName: "adxt"},
 	{ID: "donchian_breakout", ShortName: "dbo"},
 	{ID: "tema_cross", ShortName: "temac"},
+	{ID: "momentum_pro", ShortName: "mompro"},
+	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 }
 
 var defaultOptionsStrategies = []stratDef{
@@ -156,6 +162,8 @@ var defaultPerpsStrategies = []stratDef{
 	{ID: "adx_trend", ShortName: "adxt"},
 	{ID: "donchian_breakout", ShortName: "dbo"},
 	{ID: "session_breakout", ShortName: "sbo"},
+	{ID: "momentum_pro", ShortName: "mompro"},
+	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 }
 
 var defaultFuturesStrategies = []stratDef{
@@ -180,6 +188,8 @@ var defaultFuturesStrategies = []stratDef{
 	{ID: "session_breakout", ShortName: "sbo"},
 	{ID: "tema_cross", ShortName: "temac"},
 	{ID: "tema_cross_bd", ShortName: "temacb"},
+	{ID: "momentum_pro", ShortName: "mompro"},
+	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 }
 
 // Supported CME futures symbols for the init wizard.
