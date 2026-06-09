@@ -742,6 +742,12 @@ func main() {
 			fmt.Println()
 		}
 
+		// totalPV holds the shared-wallet-adjusted portfolio value computed during
+		// the portfolio risk check; it is reused in the cycle summary log below
+		// so the summary doesn't double-count virtual cash in shared-wallet
+		// setups (#908). Zero when saveFailures >= 3 (trades skipped).
+		var totalPV float64
+
 		// Process only due strategies
 		if saveFailures >= 3 {
 			fmt.Println("[CRITICAL] State save failed 3x, skipping trades this cycle")
@@ -912,7 +918,8 @@ func main() {
 			}
 
 			mu.RLock()
-			totalPV, usedPVFallback := computeTotalPortfolioValue(cfg.Strategies, state, prices, walletBalances, sharedWallets)
+			var usedPVFallback bool
+			totalPV, usedPVFallback = computeTotalPortfolioValue(cfg.Strategies, state, prices, walletBalances, sharedWallets)
 			totalNotional := PortfolioNotional(state.Strategies, prices)
 			// #296: aggregate perps margin drawdown inputs alongside the
 			// equity total so the portfolio kill switch can fire on a
@@ -2066,16 +2073,16 @@ func main() {
 			} // end if !killSwitchFired
 		}
 
-		// Calculate total portfolio value and per-channel values/strategies.
-		// Group by logical channel key (platform or type) so summaries work with any backend.
+		// Calculate per-channel values/strategies for channel-level summaries.
+		// Total portfolio value reuses totalPV (shared-wallet-adjusted) computed
+		// earlier in the cycle — summing per-strategy PortfolioValue here would
+		// double-count virtual cash in shared-wallet setups (#908).
 		mu.RLock()
-		totalValue := 0.0
 		channelValue := make(map[string]float64)
 		channelStrats := make(map[string][]StrategyConfig)
 		for _, sc := range cfg.Strategies {
 			if s, ok := state.Strategies[sc.ID]; ok {
 				pv := PortfolioValue(s, prices)
-				totalValue += pv
 				if chKey := notifier.resolveChannelKey(sc.Platform, sc.Type); chKey != "" {
 					channelValue[chKey] += pv
 					channelStrats[chKey] = append(channelStrats[chKey], sc)
@@ -2085,7 +2092,7 @@ func main() {
 		mu.RUnlock()
 
 		elapsed := time.Since(cycleStart)
-		logMgr.LogSummary(cycle, elapsed, len(dueStrategies), totalTrades, totalValue)
+		logMgr.LogSummary(cycle, elapsed, len(dueStrategies), totalTrades, totalPV)
 
 		// Pre-compute closed-position history once per cycle so per-channel /
 		// per-asset Sharpe calls (and the later ComputeSharpeByStrategy for
