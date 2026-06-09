@@ -1641,6 +1641,10 @@ func main() {
 							}
 							mu.Lock()
 							syncStrategyRegimeState(stratState, storeRegime, cfg.Regime)
+							// #907: update per-strategy divergence state after regime sync.
+							// result.Divergence is populated by runHyperliquidCheck when
+							// regime_window_divergence is configured on sc.
+							updateStrategyDivergenceState(stratState, result.Divergence)
 							mu.Unlock()
 							var execResult *HyperliquidExecuteResult
 							liveExecFailed := false
@@ -2885,6 +2889,25 @@ func runHyperliquidCheck(sc *StrategyConfig, prices map[string]float64, posCtx P
 			if _, loaded := regimeDirectionalLegacyWarned.LoadOrStore(sc.ID, struct{}{}); !loaded {
 				logger.Warn("Regime directional policy: open position has no stamped regime (legacy pre-#741); resolving against current regime=%q. Hold-on-transition not guaranteed for this position; self-heals on next entry.", regimeKey)
 			}
+		}
+	}
+	// #907: regime window divergence override — runs AFTER applyRegimeDirectionalPolicy
+	// so the divergence wins when both are configured (medium-window policy entry is
+	// superseded by the short-window hard-flip). Only affects new-entry direction when flat;
+	// open positions keep hold-on-transition freeze (applyRegimeDivergenceOverride guards posQty).
+	if sc.RegimeWindowDivergence.IsConfigured() {
+		payload := regimePayloadValue(result.Regime)
+		divResult := applyRegimeDivergenceOverride(sc, payload, regime, posCtx.Quantity)
+		result.Divergence = divResult
+		if divResult.IsActive() && posCtx.Quantity <= 0 {
+			logger.Info("Regime divergence override: short=%s medium=%s -> direction=%q (was policy-resolved)",
+				divResult.ShortLabel, divResult.MediumLabel, divResult.OverrideDir)
+		} else if divResult.Kind == DivergenceHard {
+			logger.Info("Regime divergence: hard divergence short=%s medium=%s (position open, holding direction)",
+				divResult.ShortLabel, divResult.MediumLabel)
+		} else if divResult.Kind == DivergenceSoft {
+			logger.Info("Regime divergence: soft divergence short=%s medium=%s (no override)",
+				divResult.ShortLabel, divResult.MediumLabel)
 		}
 	}
 	applySignalInversion(*sc, result, logger)

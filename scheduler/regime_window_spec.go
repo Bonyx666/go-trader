@@ -302,6 +302,12 @@ func validateStrategyRegimeVocabulary(cfg *Config) []string {
 			polErrs := sc.RegimeDirectionalPolicy.ResolveRawWithLabels(prefix+".regime_directional_policy", dirLabels)
 			errs = append(errs, polErrs...)
 		}
+		// #907: regime_window_divergence shape validation (window names, on_divergence).
+		// Window-reference existence is checked in validateRegimeWindowsConfig.
+		if sc.RegimeWindowDivergence.IsConfigured() {
+			divErrs := sc.RegimeWindowDivergence.ResolveRaw(prefix + ".regime_window_divergence")
+			errs = append(errs, divErrs...)
+		}
 		// stop_loss_atr_regime / trailing_stop_atr_regime vocabulary is resolved
 		// authoritatively in validateRegimeATRConfig (which also populates the
 		// typed runtime fields and runs the mutex checks) using the same

@@ -386,6 +386,29 @@ func validateRegimeWindowsConfig(cfg *Config) []string {
 				errs = append(errs, fmt.Sprintf("%s: %s=%q not found in regime.windows (valid: %s)", prefix, pair.field, pair.value, strings.Join(sortedRegimeWindowNamesFromConfig(rc.Windows), ", ")))
 			}
 		}
+		// #907: regime_window_divergence window references must exist in regime.windows.
+		if sc.RegimeWindowDivergence.IsConfigured() && !sc.RegimeWindowDivergence.IsZero() {
+			for _, pair := range []struct {
+				field string
+				value string
+			}{
+				{"short_window", sc.RegimeWindowDivergence.ShortWindow},
+				{"medium_window", sc.RegimeWindowDivergence.MediumWindow},
+			} {
+				key := normalizeRegimeWindowKey(pair.value)
+				if key == "" || key == regimeWindowDefaultKey {
+					// Caught earlier by ResolveRaw (must be non-empty, non-default).
+					continue
+				}
+				if !multi {
+					errs = append(errs, fmt.Sprintf("%s: regime_window_divergence.%s=%q requires regime.windows to be configured", prefix, pair.field, pair.value))
+					continue
+				}
+				if !regimeWindowExists(rc, key) {
+					errs = append(errs, fmt.Sprintf("%s: regime_window_divergence.%s=%q not found in regime.windows (valid: %s)", prefix, pair.field, pair.value, strings.Join(sortedRegimeWindowNamesFromConfig(rc.Windows), ", ")))
+				}
+			}
+		}
 	}
 	return errs
 }
