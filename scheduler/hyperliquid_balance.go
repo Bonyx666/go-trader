@@ -500,10 +500,7 @@ func tryBookSoleOwnerTPFill(
 		tpPrice = tpPrices[tierIdx]
 	}
 
-	closePx := tpPrice
-	if useFillFee && lookup.Px > 0 {
-		closePx = lookup.Px
-	}
+	closePx := hlReconcileExternalClosePx(tpPrice, lookup, useFillFee)
 	if closePx <= 0 {
 		return false
 	}
@@ -1010,14 +1007,15 @@ func reconcileHyperliquidAccountPositions(dueStrategies, allStrategies []Strateg
 						}
 					}
 				} else if mark, ok := prices[coin]; ok && mark > 0 {
-					// #584: credit s.Cash with mark-based PnL so the per-strategy
+					// #584: credit s.Cash with close-based PnL so the per-strategy
 					// PortfolioValue (and the summary TOTAL) match the real HL
-					// account after an external close. The mark is fetched at
-					// cycle start, so cp.RealizedPnL is an *approximation* — it
-					// will drift from the true on-chain fill price (which can be
-					// minutes earlier). Do not treat the resulting Trade /
-					// ClosedPosition rows as authoritative for tax or reporting;
-					// they exist to keep cash bookkeeping in sync.
+					// account after an external close. When userFills matches the
+					// close (#909), hlReconcileExternalClosePx books at the fill
+					// VWAP; otherwise the cycle-start mark is an approximation that
+					// can drift from the true on-chain fill price. Do not treat
+					// the resulting Trade / ClosedPosition rows as authoritative
+					// for tax or reporting; they exist to keep cash bookkeeping
+					// in sync.
 					lookup, useFillFee := resolveFee(coin, 0, pos.Quantity)
 					logHyperliquidReconcileFillLookup(logger, coin, 0, pos.Quantity, lookup, useFillFee)
 					closePx := hlReconcileExternalClosePx(mark, lookup, useFillFee)

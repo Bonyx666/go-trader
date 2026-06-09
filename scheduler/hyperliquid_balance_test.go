@@ -1534,6 +1534,202 @@ func TestReconcileSharedCoin_ExternalCloseUsesFillPriceWhenAvailable(t *testing.
 	}
 }
 
+// TestReconcileSharedCoin_Detector1_ExternalFallbackUsesFillPrice verifies
+// Detector 1's SL-unfilled external path books at userFills Px (#909).
+func TestReconcileSharedCoin_Detector1_ExternalFallbackUsesFillPrice(t *testing.T) {
+	const mark = 61000.0
+	const fillPx = 60800.0
+	const ownerQty = 0.2
+	const ownerAvgCost = 60000.0
+	const wantFee = 0.85
+
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-owner-btc": {
+				ID: "hl-owner-btc", Cash: 10000, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"BTC": {Symbol: "BTC", Quantity: ownerQty, AvgCost: ownerAvgCost, Side: "long",
+						Multiplier: 1, Leverage: 5, OwnerStrategyID: "hl-owner-btc",
+						StopLossOID: 5005, StopLossTriggerPx: 58000},
+				},
+			},
+			"hl-peer-btc": {
+				ID: "hl-peer-btc", Cash: 10000, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"BTC": {Symbol: "BTC", Quantity: 0.1, AvgCost: 60500, Side: "long",
+						Multiplier: 1, Leverage: 5, OwnerStrategyID: "hl-peer-btc"},
+				},
+			},
+		},
+	}
+	scs := []StrategyConfig{
+		{ID: "hl-owner-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"hold", "BTC", "1h", "--mode=live"}, Leverage: 5},
+		{ID: "hl-peer-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"hold", "BTC", "1h", "--mode=live"}, Leverage: 5},
+	}
+	origLookup := lookupHyperliquidReconcileFillFee
+	defer func() { lookupHyperliquidReconcileFillFee = origLookup }()
+	lookupHyperliquidReconcileFillFee = func(_, coin string, oid int64, qty float64) (HLFillLookup, bool) {
+		if oid == 5005 {
+			return HLFillLookup{Fee: 1.0, FilledQty: ownerQty, Count: 1, OID: 9999}, true
+		}
+		if oid == 0 && coin == "BTC" && math.Abs(qty-ownerQty) < 1e-9 {
+			return HLFillLookup{Fee: wantFee, Px: fillPx, Count: 1, OID: 8888}, true
+		}
+		return HLFillLookup{}, false
+	}
+	logMgr, _ := NewLogManager(t.TempDir())
+	var mu sync.RWMutex
+	prices := map[string]float64{"BTC": mark}
+	_, _, _ = reconcileHyperliquidAccountPositions(scs, scs, state, &mu, logMgr, nil, prices, "0xtest", nil, false)
+
+	owner := state.Strategies["hl-owner-btc"]
+	if len(owner.ClosedPositions) != 1 {
+		t.Fatalf("owner ClosedPositions = %d, want 1", len(owner.ClosedPositions))
+	}
+	cp := owner.ClosedPositions[0]
+	if cp.ClosePrice != fillPx {
+		t.Errorf("owner ClosePrice = %v, want fill %v (not mark %v)", cp.ClosePrice, fillPx, mark)
+	}
+	wantPnL := ownerQty*(fillPx-ownerAvgCost) - wantFee
+	if math.Abs(cp.RealizedPnL-wantPnL) > 1e-6 {
+		t.Errorf("owner RealizedPnL = %v, want %v", cp.RealizedPnL, wantPnL)
+	}
+}
+
+// TestReconcileSharedCoin_Detector2_ExternalFallbackUsesFillPrice verifies
+// Detector 2's SL-unfilled external path books at userFills Px (#909).
+func TestReconcileSharedCoin_Detector2_ExternalFallbackUsesFillPrice(t *testing.T) {
+	const mark = 3020.0
+	const fillPx = 3010.0
+	const ownerQty = 1.0
+	const ownerAvgCost = 3000.0
+	const wantFee = 1.05
+
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-owner-eth": {
+				ID: "hl-owner-eth", Cash: 1000, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"ETH": {Symbol: "ETH", Quantity: ownerQty, AvgCost: ownerAvgCost, Side: "long",
+						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-owner-eth",
+						StopLossOID: 4242, StopLossTriggerPx: 2900},
+				},
+			},
+			"hl-peer-eth": {
+				ID: "hl-peer-eth", Cash: 500, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"ETH": {Symbol: "ETH", Quantity: 0.5, AvgCost: 3000, Side: "long",
+						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-peer-eth"},
+				},
+			},
+		},
+	}
+	scs := []StrategyConfig{
+		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-peer-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
+	}
+	positions := []HLPosition{{Coin: "ETH", Size: 0.5, EntryPrice: 3000, Leverage: 10}}
+	prices := map[string]float64{"ETH": mark}
+
+	origLookup := lookupHyperliquidReconcileFillFee
+	defer func() { lookupHyperliquidReconcileFillFee = origLookup }()
+	lookupHyperliquidReconcileFillFee = func(_, coin string, oid int64, qty float64) (HLFillLookup, bool) {
+		if oid == 4242 {
+			return HLFillLookup{Fee: 0.1, FilledQty: ownerQty, Count: 1, OID: 9999}, true
+		}
+		if oid == 0 && coin == "ETH" && math.Abs(qty-ownerQty) < 1e-9 {
+			return HLFillLookup{Fee: wantFee, Px: fillPx, Count: 1, OID: 7777}, true
+		}
+		return HLFillLookup{}, false
+	}
+
+	logMgr, _ := NewLogManager(t.TempDir())
+	var mu sync.RWMutex
+	_, _, _ = reconcileHyperliquidAccountPositions(scs, scs, state, &mu, logMgr, positions, prices, "0xtest", nil, false)
+
+	owner := state.Strategies["hl-owner-eth"]
+	if len(owner.ClosedPositions) != 1 {
+		t.Fatalf("owner ClosedPositions = %d, want 1", len(owner.ClosedPositions))
+	}
+	cp := owner.ClosedPositions[0]
+	if cp.ClosePrice != fillPx {
+		t.Errorf("owner ClosePrice = %v, want fill %v (not mark %v)", cp.ClosePrice, fillPx, mark)
+	}
+	wantPnL := ownerQty*(fillPx-ownerAvgCost) - wantFee
+	if math.Abs(cp.RealizedPnL-wantPnL) > 1e-6 {
+		t.Errorf("owner RealizedPnL = %v, want %v", cp.RealizedPnL, wantPnL)
+	}
+}
+
+// TestReconcileSharedCoin_Detector3_PartialUsesFillPrice verifies Detector 3's
+// external partial path books at userFills Px (#909).
+func TestReconcileSharedCoin_Detector3_PartialUsesFillPrice(t *testing.T) {
+	const ownerStartCash = 1000.0
+	const ownerQty = 0.5
+	const peerQty = 0.5
+	const avgCost = 3000.0
+	const mark = 3200.0
+	const fillPx = 3185.0
+	const closeQty = 0.25
+	const wantFee = 0.28
+
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-owner-eth": {
+				ID: "hl-owner-eth", Cash: ownerStartCash, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"ETH": {Symbol: "ETH", Quantity: ownerQty, InitialQuantity: ownerQty, AvgCost: avgCost, Side: "long",
+						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-owner-eth",
+						EntryATR: 100, StopLossOID: 77, StopLossTriggerPx: 2900,
+						TPOIDs: []int64{0, 222, 333}},
+				},
+			},
+			"hl-peer-eth": {
+				ID: "hl-peer-eth", Cash: 500, Platform: "hyperliquid", Type: "perps",
+				Positions: map[string]*Position{
+					"ETH": {Symbol: "ETH", Quantity: peerQty, InitialQuantity: peerQty, AvgCost: avgCost, Side: "long",
+						Multiplier: 1, Leverage: 10, OwnerStrategyID: "hl-peer-eth"},
+				},
+			},
+		},
+	}
+	allStrategies := []StrategyConfig{
+		{ID: "hl-owner-eth", Platform: "hyperliquid", Type: "perps", CloseStrategy: &StrategyRef{Name: "tiered_tp_atr_live"}, Args: []string{"tema", "ETH", "1h", "--mode=live"}},
+		{ID: "hl-peer-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rmc", "ETH", "1h", "--mode=live"}},
+	}
+	positions := []HLPosition{{Coin: "ETH", Size: 0.75, EntryPrice: avgCost, Leverage: 10}}
+	prices := map[string]float64{"ETH": mark}
+
+	origLookup := lookupHyperliquidReconcileFillFee
+	defer func() { lookupHyperliquidReconcileFillFee = origLookup }()
+	lookupHyperliquidReconcileFillFee = func(_, coin string, oid int64, qty float64) (HLFillLookup, bool) {
+		if oid == 0 && coin == "ETH" && math.Abs(qty-closeQty) < 1e-9 {
+			return HLFillLookup{Fee: wantFee, Px: fillPx, Count: 1, OID: 5555}, true
+		}
+		return HLFillLookup{}, false
+	}
+
+	logMgr, _ := NewLogManager(t.TempDir())
+	var mu sync.RWMutex
+	_, _, _ = reconcileHyperliquidAccountPositions(allStrategies, allStrategies, state, &mu, logMgr, positions, prices, "0xtest", nil, false)
+
+	owner := state.Strategies["hl-owner-eth"]
+	if len(owner.TradeHistory) != 1 {
+		t.Fatalf("owner close trades = %d, want 1", len(owner.TradeHistory))
+	}
+	tr := owner.TradeHistory[0]
+	if !tr.IsClose || math.Abs(tr.Quantity-closeQty) > 1e-9 || tr.Price != fillPx {
+		t.Errorf("close trade = %+v, want close %.2f @ fill %v", tr, closeQty, fillPx)
+	}
+	wantPnL := closeQty*(fillPx-avgCost) - wantFee
+	if math.Abs(tr.RealizedPnL-wantPnL) > 1e-6 {
+		t.Errorf("trade RealizedPnL = %v, want %v", tr.RealizedPnL, wantPnL)
+	}
+	if math.Abs(owner.Cash-(ownerStartCash+wantPnL)) > 1e-6 {
+		t.Errorf("owner Cash = %v, want %v", owner.Cash, ownerStartCash+wantPnL)
+	}
+}
+
 // TestReconcileSharedCoin_Detector1_WrongOIDInUserfillsBooksExternal is a #756
 // regression: userFills hit for the SL lookup query but with a non-matching OID
 // must not book hl_sync_stop_loss — fall back to mark-based hl_sync_external.
