@@ -2271,7 +2271,7 @@ func main() {
 		// HTTPS latency can't stall the scheduler cycle.
 		var duePending []pendingLeaderboardSummary
 		if notifier.HasBackends() {
-			duePending = collectDueLeaderboardSummaries(cfg, state, prices, ComputeSharpeByStrategy(closedByStrategy, cfg, state), lifetimeStats)
+			duePending = collectDueLeaderboardSummaries(cfg, state, prices, ComputeSharpeByStrategy(closedByStrategy, cfg, state), lifetimeStats, walletBalances, sharedWallets)
 		}
 
 		if err := SaveStateWithDB(state, cfg, stateDB); err != nil {
@@ -3946,9 +3946,13 @@ func runLeaderboardSummariesAndExit(lcs []LeaderboardSummaryConfig, cfg *Config,
 	prices := fetchPricesForSummary(cfg)
 	sharpeByStrategy := ComputeSharpeByStrategy(LoadClosedPositionsByStrategy(sdb, cfg), cfg, state)
 	lifetimeStats := loadLifetimeStatsBestEffort(sdb, "[leaderboard]")
+	// CLI exit path holds no state lock — safe to fetch wallet balances once
+	// here and reuse across every summary (#915).
+	walletBalances, _ := fetchSharedWalletBalances(cfg.Strategies, nil)
+	accountShared := detectSharedWallets(cfg.Strategies)
 	posted := 0
 	for _, lc := range lcs {
-		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats)
+		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats, walletBalances, accountShared)
 		if msg == "" {
 			fmt.Fprintf(os.Stderr, "No strategies match leaderboard summary platform=%s ticker=%s\n", lc.Platform, lc.Ticker)
 			continue
@@ -4007,7 +4011,7 @@ type pendingLeaderboardSummary struct {
 // optimistically so duplicate posts are avoided if the caller's Discord send
 // fails; same semantics as the previous in-lock implementation. Caller must
 // hold the write lock on state. (#308)
-func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats) []pendingLeaderboardSummary {
+func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats, walletBalances map[SharedWalletKey]float64, accountShared map[SharedWalletKey][]string) []pendingLeaderboardSummary {
 	if len(cfg.LeaderboardSummaries) == 0 {
 		return nil
 	}
@@ -4026,7 +4030,7 @@ func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[str
 		if !last.IsZero() && now.Sub(last) < freq {
 			continue
 		}
-		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats)
+		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats, walletBalances, accountShared)
 		if msg == "" {
 			continue
 		}

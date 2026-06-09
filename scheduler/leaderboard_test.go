@@ -528,7 +528,7 @@ func TestBuildLeaderboardSummary_PlatformOnly(t *testing.T) {
 	}
 
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", TopN: 10, Channel: "chan-1"}
-	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil)
+	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil, nil, nil)
 	if msg == "" {
 		t.Fatal("Expected non-empty message")
 	}
@@ -559,7 +559,7 @@ func TestBuildLeaderboardSummary_RegimePriceLine741(t *testing.T) {
 
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", TopN: 5, Channel: "chan-1"}
 	prices := map[string]float64{"ETH/USDT": 3000}
-	msg := BuildLeaderboardSummary(lc, cfg, state, prices, nil, nil)
+	msg := BuildLeaderboardSummary(lc, cfg, state, prices, nil, nil, nil, nil)
 	if msg == "" {
 		t.Fatal("Expected non-empty message")
 	}
@@ -584,7 +584,7 @@ func TestBuildLeaderboardSummary_TickerFilter(t *testing.T) {
 	}
 
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", Ticker: "eth", TopN: 5, Channel: "chan-1"}
-	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil)
+	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil, nil, nil)
 	if msg == "" {
 		t.Fatal("Expected non-empty message")
 	}
@@ -627,7 +627,7 @@ func TestBuildLeaderboardSummary_DefaultTopN(t *testing.T) {
 
 	// TopN=0 means default (5).
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", Channel: "c1"}
-	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil)
+	msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil, nil, nil)
 	if !containsStr(msg, "Hyperliquid Top 5") {
 		t.Errorf("Expected default TopN=5 in title, got:\n%s", msg)
 	}
@@ -650,7 +650,7 @@ func TestBuildLeaderboardSummary_PositionsOpenedAndWinLoss(t *testing.T) {
 		"hl-sma-btc": {PositionsOpened: 4, Wins: 3, Losses: 1},
 	}
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", TopN: 5, Channel: "c1"}
-	msg := BuildLeaderboardSummary(lc, cfg, state, map[string]float64{"BTC/USDT": 50000}, nil, lifetime)
+	msg := BuildLeaderboardSummary(lc, cfg, state, map[string]float64{"BTC/USDT": 50000}, nil, lifetime, nil, nil)
 	if msg == "" {
 		t.Fatal("BuildLeaderboardSummary returned empty message")
 	}
@@ -670,7 +670,7 @@ func TestBuildLeaderboardSummary_NoMatches(t *testing.T) {
 	state.Strategies["sma-btc"] = NewStrategyState(cfg.Strategies[0])
 
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", Channel: "c1"}
-	if msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil); msg != "" {
+	if msg := BuildLeaderboardSummary(lc, cfg, state, nil, nil, nil, nil, nil); msg != "" {
 		t.Errorf("Expected empty message when no strategies match, got:\n%s", msg)
 	}
 }
@@ -812,12 +812,15 @@ func TestBuildLeaderboardSummary_AdjustedTotal(t *testing.T) {
 
 	lc := LeaderboardSummaryConfig{Platform: "hyperliquid", TopN: 5, Channel: "test"}
 
-	// BuildLeaderboardSummary fetches wallet balances internally; we stub the
-	// fetcher via env + a real walletKeyFor. Without a live HL endpoint the
-	// balance fetch will fail → fallback to virtual sum. That's fine — we just
-	// assert the function doesn't panic and returns a non-empty string with a
-	// TOTAL row.
-	msg := BuildLeaderboardSummary(lc, cfg, state, prices, nil, nil)
+	// Inject a real wallet balance ($8,000) for the shared HL account so the
+	// TOTAL row dedups to it instead of the naive $10,000 virtual sum (#915).
+	// Both strategies share key {hyperliquid, 0xtest}, fully contained in the
+	// subset, so the adjusted total = the injected balance.
+	walletKey := SharedWalletKey{Platform: "hyperliquid", Account: "0xtest"}
+	walletBalances := map[SharedWalletKey]float64{walletKey: 8000}
+	accountShared := detectSharedWallets(cfg.Strategies)
+
+	msg := BuildLeaderboardSummary(lc, cfg, state, prices, nil, nil, walletBalances, accountShared)
 	if msg == "" {
 		t.Fatal("BuildLeaderboardSummary returned empty string")
 	}
@@ -829,6 +832,10 @@ func TestBuildLeaderboardSummary_AdjustedTotal(t *testing.T) {
 		}
 	}
 	if totalLine == "" {
-		t.Errorf("no TOTAL row found in:\n%s", msg)
+		t.Fatalf("no TOTAL row found in:\n%s", msg)
+	}
+	// Adjusted TOTAL value must be $8,000 (deduped), not $10,000 (naive sum).
+	if !strings.Contains(totalLine, "8,000") {
+		t.Errorf("TOTAL row should show adjusted $8,000; got: %q\nfull msg:\n%s", totalLine, msg)
 	}
 }

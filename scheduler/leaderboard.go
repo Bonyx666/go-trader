@@ -434,7 +434,14 @@ func platformIcon(platform string) string {
 // optionally ticker) sorted by PnL% descending, truncated to TopN. Returns ""
 // if no strategies match — caller should skip posting in that case.
 // Issue #308. lifetimeStats may be nil; missing keys render zero round trips.
-func BuildLeaderboardSummary(lc LeaderboardSummaryConfig, cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats) string {
+//
+// walletBalances/accountShared feed the shared-wallet-adjusted TOTAL (#915) and
+// are supplied by the caller — NOT fetched here — because this runs under the
+// state write lock on the per-cycle path (collectDueLeaderboardSummaries); the
+// network I/O of fetchSharedWalletBalances must stay outside the lock. The
+// CLI exit path (runLeaderboardSummariesAndExit) fetches once before the loop
+// and passes the result in. Pass nil for both to fall back to the naive sum.
+func BuildLeaderboardSummary(lc LeaderboardSummaryConfig, cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats, walletBalances map[SharedWalletKey]float64, accountShared map[SharedWalletKey][]string) string {
 	topN := lc.TopN
 	if topN <= 0 {
 		topN = 5
@@ -477,10 +484,10 @@ func BuildLeaderboardSummary(lc LeaderboardSummaryConfig, cfg *Config, state *Ap
 		n = len(entries)
 	}
 
-	// Compute shared-wallet-adjusted TOTAL for the shown entries (#915).
-	// Fetch wallet balances outside the state lock (state is read-only here).
-	walletBalances, _ := fetchSharedWalletBalances(cfg.Strategies, nil)
-	accountShared := detectSharedWallets(cfg.Strategies)
+	// Compute shared-wallet-adjusted TOTAL for the shown entries (#915). Wallet
+	// balances are supplied by the caller (already fetched outside the lock) so
+	// this path performs no network I/O — critical because the per-cycle caller
+	// holds the state write lock. nil balances → naive sum fallback.
 	adj := leaderboardAdjustedTotal(entries[:n], configByID, state, prices, walletBalances, accountShared)
 
 	platformTitle := titleCase(lc.Platform)
