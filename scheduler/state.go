@@ -118,6 +118,21 @@ type StrategyState struct {
 	// ClosedOptionPositions mirrors ClosedPositions for option-position
 	// lifecycle tracking; flushed to closed_option_positions table. (#288)
 	ClosedOptionPositions []ClosedOptionPosition `json:"-"`
+
+	// SharedWalletValue is the exchange-authoritative display value for this
+	// strategy when it is a member of a shared on-exchange wallet (#918). It is
+	// recomputed each cycle from the real account balance + on-chain positions
+	// so the per-strategy operator rows sum EXACTLY to the wallet balance.
+	// In-memory only (never persisted): a stale value would misreport equity;
+	// it self-heals every cycle. Consumed by displayStrategyValue; risk math
+	// continues to use the modeled PortfolioValue (s.Cash + modeled P&L).
+	SharedWalletValue float64 `json:"-"`
+	// SharedWalletValueSet gates SharedWalletValue: true only on cycles where a
+	// fresh balance + position snapshot was reconciled for this strategy's
+	// wallet. False (the default, and reset whenever the fetch fails or the
+	// strategy is not a shared-wallet member) makes display fall back to the
+	// modeled PortfolioValue.
+	SharedWalletValueSet bool `json:"-"`
 }
 
 func NewStrategyState(cfg StrategyConfig) *StrategyState {

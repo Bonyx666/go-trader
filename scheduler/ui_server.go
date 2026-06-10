@@ -429,7 +429,7 @@ func (ss *StatusServer) uiStrategyOverview(id string) (UIStrategyOverview, Lifet
 	}
 
 	prices := ss.fetchLiveMarkPrices()
-	pv := PortfolioValue(&snapshot, prices)
+	pv := displayStrategyValue(&snapshot, prices)
 	initCap := EffectiveInitialCapital(sc, &snapshot)
 	pnl := pv - initCap
 	pnlPct := 0.0
@@ -547,8 +547,12 @@ func (ss *StatusServer) handleAPIStrategyEquity(w http.ResponseWriter, r *http.R
 
 	initCap := EffectiveInitialCapital(sc, &snapshot)
 	// Cost-basis terminal point only — avoids N× external mark fetches when
-	// loadSparklines polls one equity URL per visible strategy (#813).
-	pv := PortfolioValue(&snapshot, map[string]float64{})
+	// loadSparklines polls one equity URL per visible strategy (#813). For a
+	// shared-wallet member this returns the exchange-derived value (#918) so the
+	// sparkline's last point matches the overview card; it still adds no mark
+	// fetch (displayStrategyValue falls through to the same PortfolioValue when
+	// the gate is unset).
+	pv := displayStrategyValue(&snapshot, map[string]float64{})
 
 	var closed []ClosedPosition
 	if ss.stateDB != nil {

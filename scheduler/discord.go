@@ -505,7 +505,7 @@ func FormatCategorySummary(
 		if ss == nil {
 			continue
 		}
-		pv := PortfolioValue(ss, prices)
+		pv := displayStrategyValue(ss, prices)
 		walletPct := 0.0
 
 		// Shared wallet indicator (no value scaling — cash is already split by capital_pct).

@@ -23,6 +23,12 @@ type HLPosition struct {
 	EntryPrice float64
 	Leverage   float64 // on-chain leverage value (#254)
 	MarginMode string  // "isolated" | "cross" — forwarded to Python so it can skip a duplicate /info call (#768)
+	// UnrealizedPnL is the exchange-reported unrealized P&L for this position
+	// (clearinghouseState assetPositions.position.unrealizedPnl). Used by the
+	// shared-wallet exchange-authoritative reconciliation (#918) to attribute
+	// real position P&L to the owning strategy instead of modeling it from a
+	// fetched mark. Zero when the field is absent or unparseable.
+	UnrealizedPnL float64
 }
 
 // hlExecuteSnapshotForCoin extracts the cycle-local on-chain leverage + margin
@@ -225,6 +231,7 @@ func fetchHyperliquidState(accountAddress string) (float64, []HLPosition, error)
 					Type  string      `json:"type"`
 					Value json.Number `json:"value"`
 				} `json:"leverage"`
+				UnrealizedPnl string `json:"unrealizedPnl"`
 			} `json:"position"`
 		} `json:"assetPositions"`
 	}
@@ -264,12 +271,23 @@ func fetchHyperliquidState(accountAddress string) (float64, []HLPosition, error)
 		case "isolated", "cross":
 			mode = ap.Position.Leverage.Type
 		}
+		// #918: exchange-reported unrealized P&L. Tolerated as absent/empty
+		// (older snapshots or parse failure) → 0, which the reconciler treats
+		// as "no P&L contribution" and the drift alarm will surface if it
+		// causes the member sum to miss the account balance.
+		var uPnL float64
+		if ap.Position.UnrealizedPnl != "" {
+			if parsed, perr := strconv.ParseFloat(ap.Position.UnrealizedPnl, 64); perr == nil {
+				uPnL = parsed
+			}
+		}
 		positions = append(positions, HLPosition{
-			Coin:       ap.Position.Coin,
-			Size:       szi,
-			EntryPrice: entryPx,
-			Leverage:   lev,
-			MarginMode: mode,
+			Coin:          ap.Position.Coin,
+			Size:          szi,
+			EntryPrice:    entryPx,
+			Leverage:      lev,
+			MarginMode:    mode,
+			UnrealizedPnL: uPnL,
 		})
 	}
 

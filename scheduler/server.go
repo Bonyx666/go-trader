@@ -318,7 +318,7 @@ func (ss *StatusServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	totalValue := 0.0
 	for _, s := range ss.state.Strategies {
-		totalValue += PortfolioValue(s, prices)
+		totalValue += displayStrategyValue(s, prices)
 	}
 	totalNotional := PortfolioNotional(ss.state.Strategies, prices)
 
@@ -343,7 +343,7 @@ func (ss *StatusServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	ss.strategiesMu.RUnlock()
 
 	for id, s := range ss.state.Strategies {
-		pv := PortfolioValue(s, prices)
+		pv := displayStrategyValue(s, prices)
 		sc := cfgByID[id]
 		initCap := EffectiveInitialCapital(sc, s)
 		pnl := pv - initCap

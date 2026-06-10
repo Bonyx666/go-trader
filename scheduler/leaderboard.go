@@ -56,7 +56,7 @@ func BuildLeaderboardMessages(cfg *Config, state *AppState, prices map[string]fl
 		if ss == nil {
 			continue
 		}
-		pv := PortfolioValue(ss, prices)
+		pv := displayStrategyValue(ss, prices)
 		initCap := EffectiveInitialCapital(sc, ss)
 		pnl := pv - initCap
 		pnlPct := 0.0
@@ -209,7 +209,7 @@ func leaderboardAdjustedTotal(
 	if len(subset) == 0 {
 		return -1
 	}
-	adj, _ := computeSubsetPortfolioValue(subset, state, prices, walletBalances, accountShared)
+	adj, _ := computeSubsetDisplayValue(subset, state, prices, walletBalances, accountShared)
 	return adj
 }
 
@@ -467,7 +467,7 @@ func BuildLeaderboardSummary(lc LeaderboardSummaryConfig, cfg *Config, state *Ap
 		if ss == nil {
 			continue
 		}
-		pv := PortfolioValue(ss, prices)
+		pv := displayStrategyValue(ss, prices)
 		initCap := EffectiveInitialCapital(sc, ss)
 		pnl := pv - initCap
 		pnlPct := 0.0

@@ -139,7 +139,7 @@ func formatStatusResponse(state *AppState, prices map[string]float64) string {
 	for _, id := range sortedAppStateIDs(state) {
 		s := state.Strategies[id]
 		cash += s.Cash
-		value += PortfolioValue(s, prices)
+		value += displayStrategyValue(s, prices)
 		posCount += len(s.Positions) + len(s.OptionPositions)
 		trades += len(s.TradeHistory)
 		if regime == "" && s.Regime != "" {
@@ -201,7 +201,7 @@ func formatPnLResponse(state *AppState, prices map[string]float64) string {
 	var perStrat []string
 	for _, id := range sortedAppStateIDs(state) {
 		s := state.Strategies[id]
-		pv := PortfolioValue(s, prices)
+		pv := displayStrategyValue(s, prices)
 		cap := s.InitialCapital
 		pnl := pv - cap
 		pnlPct := 0.0
@@ -337,7 +337,7 @@ func formatLeaderboardResponse(cfg *Config, state *AppState, prices map[string]f
 		if ss == nil {
 			continue
 		}
-		pv := PortfolioValue(ss, prices)
+		pv := displayStrategyValue(ss, prices)
 		initCap := EffectiveInitialCapital(sc, ss)
 		pnl := pv - initCap
 		pnlPct := 0.0
