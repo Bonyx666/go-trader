@@ -28,42 +28,44 @@ type UIStrategy struct {
 }
 
 type UIStrategyOverview struct {
-	ID             string  `json:"id"`
-	Platform       string  `json:"platform"`
-	Symbol         string  `json:"symbol"`
-	PnLPct         float64 `json:"pnl_pct"`
-	WinRate        float64 `json:"win_rate,omitempty"`
-	Sharpe         float64 `json:"sharpe,omitempty"`
-	Regime         string  `json:"regime,omitempty"`
-	Direction      string  `json:"direction,omitempty"`
-	PnL            float64 `json:"pnl"`
-	PortfolioValue float64 `json:"portfolio_value"`
-	InitialCapital float64 `json:"initial_capital"`
+	ID               string                 `json:"id"`
+	Platform         string                 `json:"platform"`
+	Symbol           string                 `json:"symbol"`
+	PnLPct           float64                `json:"pnl_pct"`
+	WinRate          float64                `json:"win_rate,omitempty"`
+	Sharpe           float64                `json:"sharpe,omitempty"`
+	Regime           string                 `json:"regime,omitempty"`
+	Direction        string                 `json:"direction,omitempty"`
+	PnL              float64                `json:"pnl"`
+	PortfolioValue   float64                `json:"portfolio_value"`
+	InitialCapital   float64                `json:"initial_capital"`
+	RegimeDivergence *RegimeDivergenceState `json:"regime_divergence,omitempty"` // #907: active window-divergence state; nil when none
 }
 
 type UIStrategyStatus struct {
-	ID              string                     `json:"id"`
-	Type            string                     `json:"type"`
-	Platform        string                     `json:"platform"`
-	Symbol          string                     `json:"symbol"`
-	Timeframe       string                     `json:"timeframe"`
-	Direction       string                     `json:"direction,omitempty"`
-	Cash            float64                    `json:"cash"`
-	InitialCapital  float64                    `json:"initial_capital"`
-	PortfolioValue  float64                    `json:"portfolio_value"`
-	PnL             float64                    `json:"pnl"`
-	PnLPct          float64                    `json:"pnl_pct"`
-	TradeCount      int                        `json:"trade_count"`
-	WinRate         float64                    `json:"win_rate,omitempty"`
-	LifetimeStats   LifetimeTradeStats         `json:"lifetime_stats"`
-	Sharpe          float64                    `json:"sharpe,omitempty"`
-	Regime          string                     `json:"regime,omitempty"`
-	RiskState       RiskState                  `json:"risk_state"`
-	Positions       map[string]*Position       `json:"positions"`
-	OptionPositions map[string]*OptionPosition `json:"option_positions"`
-	Leverage        float64                    `json:"leverage,omitempty"`
-	SizingLeverage  float64                    `json:"sizing_leverage,omitempty"`
-	MarginMode      string                     `json:"margin_mode,omitempty"`
+	ID               string                     `json:"id"`
+	Type             string                     `json:"type"`
+	Platform         string                     `json:"platform"`
+	Symbol           string                     `json:"symbol"`
+	Timeframe        string                     `json:"timeframe"`
+	Direction        string                     `json:"direction,omitempty"`
+	Cash             float64                    `json:"cash"`
+	InitialCapital   float64                    `json:"initial_capital"`
+	PortfolioValue   float64                    `json:"portfolio_value"`
+	PnL              float64                    `json:"pnl"`
+	PnLPct           float64                    `json:"pnl_pct"`
+	TradeCount       int                        `json:"trade_count"`
+	WinRate          float64                    `json:"win_rate,omitempty"`
+	LifetimeStats    LifetimeTradeStats         `json:"lifetime_stats"`
+	Sharpe           float64                    `json:"sharpe,omitempty"`
+	Regime           string                     `json:"regime,omitempty"`
+	RegimeDivergence *RegimeDivergenceState     `json:"regime_divergence,omitempty"` // #907: active window-divergence state; nil when none
+	RiskState        RiskState                  `json:"risk_state"`
+	Positions        map[string]*Position       `json:"positions"`
+	OptionPositions  map[string]*OptionPosition `json:"option_positions"`
+	Leverage         float64                    `json:"leverage,omitempty"`
+	SizingLeverage   float64                    `json:"sizing_leverage,omitempty"`
+	MarginMode       string                     `json:"margin_mode,omitempty"`
 }
 
 type UIEquityPoint struct {
@@ -451,17 +453,18 @@ func (ss *StatusServer) uiStrategyOverview(id string) (UIStrategyOverview, Lifet
 	}
 
 	return UIStrategyOverview{
-		ID:             id,
-		Platform:       sc.Platform,
-		Symbol:         strategyDisplaySymbol(sc),
-		PnLPct:         pnlPct,
-		WinRate:        winRate,
-		Sharpe:         sharpe,
-		Regime:         snapshot.Regime,
-		Direction:      strategyDisplayDirection(sc),
-		PnL:            pnl,
-		PortfolioValue: pv,
-		InitialCapital: initCap,
+		ID:               id,
+		Platform:         sc.Platform,
+		Symbol:           strategyDisplaySymbol(sc),
+		PnLPct:           pnlPct,
+		WinRate:          winRate,
+		Sharpe:           sharpe,
+		Regime:           snapshot.Regime,
+		Direction:        strategyDisplayDirection(sc),
+		PnL:              pnl,
+		PortfolioValue:   pv,
+		InitialCapital:   initCap,
+		RegimeDivergence: snapshot.RegimeDivergence,
 	}, lifetime, true
 }
 
@@ -494,28 +497,29 @@ func (ss *StatusServer) handleAPIStrategyStatus(w http.ResponseWriter, r *http.R
 	}
 
 	resp := UIStrategyStatus{
-		ID:              overview.ID,
-		Type:            sc.Type,
-		Platform:        overview.Platform,
-		Symbol:          overview.Symbol,
-		Timeframe:       strategyDisplayTimeframe(sc),
-		Direction:       overview.Direction,
-		Cash:            snapshot.Cash,
-		InitialCapital:  overview.InitialCapital,
-		PortfolioValue:  overview.PortfolioValue,
-		PnL:             overview.PnL,
-		PnLPct:          overview.PnLPct,
-		TradeCount:      len(snapshot.TradeHistory),
-		WinRate:         overview.WinRate,
-		LifetimeStats:   lifetime,
-		Sharpe:          overview.Sharpe,
-		Regime:          overview.Regime,
-		RiskState:       snapshot.RiskState,
-		Positions:       snapshot.Positions,
-		OptionPositions: snapshot.OptionPositions,
-		Leverage:        EffectiveExchangeLeverage(sc),
-		SizingLeverage:  EffectiveSizingLeverage(sc),
-		MarginMode:      sc.MarginMode,
+		ID:               overview.ID,
+		Type:             sc.Type,
+		Platform:         overview.Platform,
+		Symbol:           overview.Symbol,
+		Timeframe:        strategyDisplayTimeframe(sc),
+		Direction:        overview.Direction,
+		Cash:             snapshot.Cash,
+		InitialCapital:   overview.InitialCapital,
+		PortfolioValue:   overview.PortfolioValue,
+		PnL:              overview.PnL,
+		PnLPct:           overview.PnLPct,
+		TradeCount:       len(snapshot.TradeHistory),
+		WinRate:          overview.WinRate,
+		LifetimeStats:    lifetime,
+		Sharpe:           overview.Sharpe,
+		Regime:           overview.Regime,
+		RegimeDivergence: overview.RegimeDivergence,
+		RiskState:        snapshot.RiskState,
+		Positions:        snapshot.Positions,
+		OptionPositions:  snapshot.OptionPositions,
+		Leverage:         EffectiveExchangeLeverage(sc),
+		SizingLeverage:   EffectiveSizingLeverage(sc),
+		MarginMode:       sc.MarginMode,
 	}
 	writeJSON(w, resp)
 }

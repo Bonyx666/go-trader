@@ -98,17 +98,18 @@ type AppState struct {
 
 // StrategyState is the per-strategy persistent state.
 type StrategyState struct {
-	ID              string                     `json:"id"`
-	Type            string                     `json:"type"`
-	Platform        string                     `json:"platform,omitempty"`
-	Cash            float64                    `json:"cash"`
-	InitialCapital  float64                    `json:"initial_capital"`
-	Positions       map[string]*Position       `json:"positions"`
-	OptionPositions map[string]*OptionPosition `json:"option_positions"`
-	TradeHistory    []Trade                    `json:"trade_history"`
-	RiskState       RiskState                  `json:"risk_state"`
-	Regime          string                     `json:"regime,omitempty"`         // most recent primary regime label from check script (#482)
-	RegimeWindows   map[string]string          `json:"regime_windows,omitempty"` // latest per-window labels from check script (#792)
+	ID               string                     `json:"id"`
+	Type             string                     `json:"type"`
+	Platform         string                     `json:"platform,omitempty"`
+	Cash             float64                    `json:"cash"`
+	InitialCapital   float64                    `json:"initial_capital"`
+	Positions        map[string]*Position       `json:"positions"`
+	OptionPositions  map[string]*OptionPosition `json:"option_positions"`
+	TradeHistory     []Trade                    `json:"trade_history"`
+	RiskState        RiskState                  `json:"risk_state"`
+	Regime           string                     `json:"regime,omitempty"`         // most recent primary regime label from check script (#482)
+	RegimeWindows    map[string]string          `json:"regime_windows,omitempty"` // latest per-window labels from check script (#792)
+	RegimeDivergence *RegimeDivergenceState     `json:"-"`                        // in-memory divergence state; not persisted (self-heals on restart within 1 cycle) (#907)
 	// ClosedPositions is an in-memory buffer of positions closed during the
 	// current cycle. SaveState appends these to the closed_positions table and
 	// clears the buffer on successful commit. Not serialized to JSON state

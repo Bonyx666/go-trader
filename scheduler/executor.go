@@ -53,6 +53,10 @@ type HyperliquidResult struct {
 	Platform   string                 `json:"platform"`
 	Timestamp  string                 `json:"timestamp"`
 	Error      string                 `json:"error,omitempty"`
+	// Divergence is the regime-window divergence result computed inside
+	// runHyperliquidCheck (#907). Not from the Python script — derived Go-side
+	// from the payload after regime resolution. Zero value = none.
+	Divergence DivergenceResult `json:"-"`
 }
 
 // HyperliquidFill holds fill details from a live Hyperliquid order.
