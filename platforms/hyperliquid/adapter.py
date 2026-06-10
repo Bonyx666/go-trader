@@ -44,6 +44,9 @@ META_CACHE_TTL_S = 3600  # 60 minutes
 OHLCV_CACHE_DIR = "/tmp"
 OHLCV_CACHE_PREFIX = "hl_ohlcv_"
 OHLCV_CACHE_TTL_S = 60
+# Extra intervals requested beyond `limit` so sparse candleSnapshot gaps (#937)
+# still yield at least `limit` rows before trimming to the most recent `limit`.
+OHLCV_GAP_MARGIN = 50
 
 # SDK imports: defer to avoid module-level ImportError when SDK not installed.
 # adapter.py is loaded with platforms/hyperliquid/ directly in sys.path (not
@@ -528,7 +531,7 @@ class HyperliquidExchangeAdapter:
         }
         interval_ms = interval_ms_map.get(interval, 3_600_000)
         end_ms = int(time.time() * 1000)
-        start_ms = end_ms - interval_ms * limit
+        start_ms = end_ms - interval_ms * (limit + OHLCV_GAP_MARGIN)
 
         # Cycle-scoped dedup: reuse a fresh on-disk snapshot so peer strategies
         # sharing this (symbol, interval, limit) don't each hit /info (#839).
@@ -552,6 +555,20 @@ class HyperliquidExchangeAdapter:
                 float(c["c"]),
                 float(c["v"]),
             ])
+        if len(result) > limit:
+            result = result[-limit:]
+        elif result and len(result) < limit:
+            # Widened window (+OHLCV_GAP_MARGIN) still came up short: gaps
+            # exceeded the margin for this symbol/interval. Callers continue
+            # while len >= 30 (check_hyperliquid.py), so flag the shortfall to
+            # stderr rather than letting indicators silently warm up on fewer
+            # bars than requested (#937).
+            print(
+                f"[WARN] hl ohlcv shortfall for {symbol} {interval}: got "
+                f"{len(result)} of {limit} requested (gaps exceed "
+                f"{OHLCV_GAP_MARGIN}-candle margin)",
+                file=sys.stderr,
+            )
         # Never cache an empty result — insufficient-data fetches must keep
         # retrying live rather than pinning every peer to the error path.
         if cache_enabled and result:
