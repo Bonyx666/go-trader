@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"os"
 	"sort"
 	"strings"
 )
@@ -241,6 +242,19 @@ type sharedWalletDriftResult struct {
 // wallet whose balance fetch failed (absent from walletBalances) leaves its
 // members on the modeled PortfolioValue fallback, and no strategy ever serves a
 // stale exchange-derived value.
+//
+// Membership: detectSharedWallets recognizes perps only, but a live HL `manual`
+// strategy on the same account holds real on-chain positions returned by
+// fetchHyperliquidState. Those are folded in as members here
+// (sameAccountLiveManualMembers) so their positions are attributed (not treated
+// as orphans → false drift alarm) and they receive an exchange-derived value
+// (#920 review).
+//
+// OKX gating: HL fetches balance+positions atomically (fetchHyperliquidState),
+// but OKX uses independent balance/position subprocesses. okxPositionsFetched
+// reports whether the OKX position fetch succeeded this cycle; when it did not,
+// OKX wallets are skipped (members fall back to PortfolioValue) rather than
+// reconciled with U=0, which would skew each member's split for one cycle.
 func reconcileSharedWalletDisplayValues(
 	strategies []StrategyConfig,
 	state *AppState,
@@ -248,6 +262,7 @@ func reconcileSharedWalletDisplayValues(
 	walletBalances map[SharedWalletKey]float64,
 	hlPositions []HLPosition,
 	okxPositions []OKXPosition,
+	okxPositionsFetched bool,
 ) []sharedWalletDriftResult {
 	for _, ss := range state.Strategies {
 		if ss != nil {
@@ -285,6 +300,9 @@ func reconcileSharedWalletDisplayValues(
 				})
 			}
 		case "okx":
+			if !okxPositionsFetched {
+				continue // positions fetch failed → don't reconcile with U=0
+			}
 			for _, p := range okxPositions {
 				if p.Size == 0 {
 					continue
@@ -298,9 +316,25 @@ func reconcileSharedWalletDisplayValues(
 			continue // no position source wired for this platform yet
 		}
 
-		capitalByID := make(map[string]float64, len(memberIDs))
+		// Fold in same-account live HL manual strategies (detectSharedWallets is
+		// perps-only, but their on-chain positions are in the snapshot above).
+		members := memberIDs
+		if manualIDs := sameAccountLiveManualMembers(key, strategies); len(manualIDs) > 0 {
+			seen := make(map[string]bool, len(members))
+			for _, id := range members {
+				seen[id] = true
+			}
+			members = append([]string(nil), memberIDs...)
+			for _, id := range manualIDs {
+				if !seen[id] {
+					members = append(members, id)
+				}
+			}
+		}
+
+		capitalByID := make(map[string]float64, len(members))
 		virtualQty := make(map[string]map[string]float64)
-		for _, id := range memberIDs {
+		for _, id := range members {
 			sc, ok := byID[id]
 			if !ok {
 				continue
@@ -312,10 +346,15 @@ func reconcileSharedWalletDisplayValues(
 			}
 			// posKey is the config symbol the strategy keys its virtual
 			// position under; coin is its upper-case form, matching positions[].
+			// HL manual keys by sc.Symbol; perps/OKX by the args symbol.
 			var posKey string
 			switch key.Platform {
 			case "hyperliquid":
-				posKey = hyperliquidSymbol(sc.Args)
+				if sc.Type == "manual" {
+					posKey = sc.Symbol
+				} else {
+					posKey = hyperliquidSymbol(sc.Args)
+				}
 			case "okx":
 				posKey = okxSymbol(sc.Args)
 			}
@@ -331,9 +370,9 @@ func reconcileSharedWalletDisplayValues(
 			}
 		}
 
-		res := reconcileSharedWalletMemberValues(memberIDs, capitalByID, positions, virtualQty, bal)
+		res := reconcileSharedWalletMemberValues(members, capitalByID, positions, virtualQty, bal)
 		memberSum := 0.0
-		for _, id := range memberIDs {
+		for _, id := range members {
 			ss := state.Strategies[id]
 			if ss == nil {
 				continue
@@ -362,4 +401,28 @@ func displayStrategyValue(s *StrategyState, prices map[string]float64) float64 {
 		return s.SharedWalletValue
 	}
 	return PortfolioValue(s, prices)
+}
+
+// sameAccountLiveManualMembers returns live HL `manual` strategy IDs that trade
+// from the same on-exchange account as key. detectSharedWallets recognizes only
+// perps (walletKeyRegistry), but a live manual strategy on the same
+// HYPERLIQUID_ACCOUNT_ADDRESS holds real on-chain positions returned by
+// fetchHyperliquidState; folding it in as a reconciliation member keeps those
+// positions from being misread as orphans (false drift alarm) and gives the
+// manual strategy a consistent exchange-derived display value (#920 review).
+// OKX has no manual instrument, so this is HL-only.
+func sameAccountLiveManualMembers(key SharedWalletKey, strategies []StrategyConfig) []string {
+	if key.Platform != "hyperliquid" {
+		return nil
+	}
+	if key.Account == "" || os.Getenv("HYPERLIQUID_ACCOUNT_ADDRESS") != key.Account {
+		return nil
+	}
+	var out []string
+	for _, sc := range strategies {
+		if sc.Platform == "hyperliquid" && sc.Type == "manual" && hyperliquidIsLive(sc.Args) {
+			out = append(out, sc.ID)
+		}
+	}
+	return out
 }

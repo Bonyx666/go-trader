@@ -44,7 +44,7 @@ func TestReconcileSharedWalletDisplayValues_SetsGatesAndSums(t *testing.T) {
 		{Coin: "ETH", Size: 2, UnrealizedPnL: -20},
 	}
 
-	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, walletBalances, hlPositions, nil)
+	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, walletBalances, hlPositions, nil, false)
 
 	if len(results) != 1 || math.Abs(results[0].Drift) > 0.01 {
 		t.Fatalf("expected 1 result with ~0 drift, got %+v", results)
@@ -74,6 +74,88 @@ func TestReconcileSharedWalletDisplayValues_SetsGatesAndSums(t *testing.T) {
 	}
 }
 
+// A live HL `manual` strategy on the same account holds a real on-chain
+// position (returned by fetchHyperliquidState) but is not a perps member. It
+// must be folded in as a member so its position is attributed (no orphan drift)
+// and it receives an exchange-derived value (#920 review).
+func TestReconcileSharedWalletDisplayValues_ManualMemberAttributed(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+	state, strategies := buildSharedWalletTestState()
+	// Add a live manual strategy on SOL (same account), with a virtual position.
+	strategies = append(strategies, StrategyConfig{
+		ID: "hl-manual-sol", Platform: "hyperliquid", Type: "manual",
+		Symbol: "SOL", Args: []string{"hold", "SOL", "1h", "--mode=live"}, Capital: 200,
+	})
+	state.Strategies["hl-manual-sol"] = &StrategyState{
+		ID: "hl-manual-sol", Cash: 100,
+		Positions: map[string]*Position{"SOL": {Symbol: "SOL", Side: "long", Quantity: 5, AvgCost: 150}},
+	}
+	sharedWallets := detectSharedWallets(strategies)
+	key := SharedWalletKey{Platform: "hyperliquid", Account: "0xtest"}
+	// Balance includes the SOL manual position's uPnL (+15).
+	walletBalances := map[SharedWalletKey]float64{key: 1045.0} // base 1000 + 50 - 20 + 15
+	hlPositions := []HLPosition{
+		{Coin: "BTC", Size: 0.1, UnrealizedPnL: 50},
+		{Coin: "ETH", Size: 2, UnrealizedPnL: -20},
+		{Coin: "SOL", Size: 5, UnrealizedPnL: 15}, // manual's on-chain position
+	}
+
+	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, walletBalances, hlPositions, nil, false)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if math.Abs(results[0].Drift) > 0.01 {
+		t.Fatalf("SOL manual position must be attributed (no orphan drift), got drift %v", results[0].Drift)
+	}
+	msol := state.Strategies["hl-manual-sol"]
+	if !msol.SharedWalletValueSet {
+		t.Fatal("manual member must be gated on")
+	}
+	// Σ all three members == balance.
+	sum := state.Strategies["hl-btc"].SharedWalletValue +
+		state.Strategies["hl-eth"].SharedWalletValue + msol.SharedWalletValue
+	if math.Abs(sum-1045.0) > 0.01 {
+		t.Errorf("member sum %v != balance 1045", sum)
+	}
+	// Manual gets its own uPnL (+15) plus a capital-weighted base share.
+	if math.Abs(msol.SharedWalletValue-(200.0/1200.0*1000.0+15)) > 0.01 {
+		t.Errorf("manual value = %v, want %v", msol.SharedWalletValue, 200.0/1200.0*1000.0+15)
+	}
+}
+
+// OKX with a failed position fetch this cycle must be skipped (members fall back
+// to PortfolioValue) rather than reconciled with U=0.
+func TestReconcileSharedWalletDisplayValues_OKXPositionsNotFetchedSkips(t *testing.T) {
+	t.Setenv("OKX_API_KEY", "okxkey")
+	strategies := []StrategyConfig{
+		{ID: "okx-a", Platform: "okx", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 500},
+		{ID: "okx-b", Platform: "okx", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 500},
+	}
+	state := &AppState{Strategies: map[string]*StrategyState{
+		"okx-a": {ID: "okx-a", Cash: 500, Positions: map[string]*Position{}},
+		"okx-b": {ID: "okx-b", Cash: 500, Positions: map[string]*Position{}},
+	}}
+	sharedWallets := detectSharedWallets(strategies)
+	key := SharedWalletKey{Platform: "okx", Account: "okxkey"}
+	walletBalances := map[SharedWalletKey]float64{key: 1000.0}
+
+	// okxPositionsFetched=false → OKX wallet must be skipped.
+	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, walletBalances, nil, nil, false)
+	if len(results) != 0 {
+		t.Fatalf("expected OKX wallet skipped when positions not fetched, got %d results", len(results))
+	}
+	if state.Strategies["okx-a"].SharedWalletValueSet || state.Strategies["okx-b"].SharedWalletValueSet {
+		t.Error("OKX members must fall back (Set=false) when positions fetch failed")
+	}
+
+	// With okxPositionsFetched=true it reconciles.
+	results = reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, walletBalances, nil, nil, true)
+	if len(results) != 1 || !state.Strategies["okx-a"].SharedWalletValueSet {
+		t.Fatalf("expected OKX reconcile when positions fetched, got %+v", results)
+	}
+}
+
 func TestReconcileSharedWalletDisplayValues_FetchFailedFallsBack(t *testing.T) {
 	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
 	state, strategies := buildSharedWalletTestState()
@@ -83,7 +165,7 @@ func TestReconcileSharedWalletDisplayValues_FetchFailedFallsBack(t *testing.T) {
 	sharedWallets := detectSharedWallets(strategies)
 
 	// Empty walletBalances simulates a failed balance fetch this cycle.
-	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, map[SharedWalletKey]float64{}, nil, nil)
+	results := reconcileSharedWalletDisplayValues(strategies, state, sharedWallets, map[SharedWalletKey]float64{}, nil, nil, false)
 
 	if len(results) != 0 {
 		t.Fatalf("expected no drift results when balance missing, got %d", len(results))

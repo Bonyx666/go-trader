@@ -1014,7 +1014,7 @@ func main() {
 			// operator rows sum EXACTLY to the wallet balance, and capture
 			// per-wallet drift for the alarm below. Runs under the same write lock
 			// the risk check holds (mutates StrategyState.SharedWalletValue*).
-			driftResults := reconcileSharedWalletDisplayValues(cfg.Strategies, state, sharedWallets, walletBalances, hlPositions, okxPositions)
+			driftResults := reconcileSharedWalletDisplayValues(cfg.Strategies, state, sharedWallets, walletBalances, hlPositions, okxPositions, okxStateFetched)
 			mu.Unlock()
 
 			// Fire throttled drift alarms outside the lock (notifier I/O).
