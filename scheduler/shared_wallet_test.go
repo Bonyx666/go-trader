@@ -912,3 +912,54 @@ func TestComputeTotalPortfolioValue_DelegatesCorrectly(t *testing.T) {
 		t.Errorf("delegation: expected usedFallback=false")
 	}
 }
+
+// A same-account live manual strategy is outside detectSharedWallets membership
+// but inside the wallet real balance. Risk-path total must not add its modeled
+// PV on top of the balance (#921).
+func TestComputeTotalPortfolioValue_SharedWalletManualNoDoubleCount(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+	strategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 500},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 500},
+		{ID: "hl-manual", Platform: "hyperliquid", Type: "manual", Symbol: "SOL", Args: []string{"hold", "SOL", "1h", "--mode=live"}, Capital: 200},
+	}
+	state := &AppState{Strategies: map[string]*StrategyState{
+		"hl-btc":    {ID: "hl-btc", Cash: 350, Positions: map[string]*Position{}},
+		"hl-eth":    {ID: "hl-eth", Cash: 500, Positions: map[string]*Position{}},
+		"hl-manual": {ID: "hl-manual", Cash: 200, Positions: map[string]*Position{}},
+	}}
+	walletBalances := map[SharedWalletKey]float64{{Platform: "hyperliquid", Account: "0xtest"}: 1000}
+	accountShared := detectSharedWallets(strategies[:2])
+
+	got, fb := computeTotalPortfolioValue(strategies, state, nil, walletBalances, accountShared)
+	if got != 1000 {
+		t.Errorf("risk path incl. manual: want exactly 1000 (real balance, no double count), got %.2f", got)
+	}
+	if fb {
+		t.Errorf("risk path incl. manual: expected usedFallback=false")
+	}
+}
+
+// Missing balance: fallback sums perps + manual member PVs once each (no double count).
+func TestComputeTotalPortfolioValue_SharedWalletManualFallback(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+	strategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 500},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 500},
+		{ID: "hl-manual", Platform: "hyperliquid", Type: "manual", Symbol: "SOL", Args: []string{"hold", "SOL", "1h", "--mode=live"}, Capital: 200},
+	}
+	state := &AppState{Strategies: map[string]*StrategyState{
+		"hl-btc":    {ID: "hl-btc", Cash: 400, Positions: map[string]*Position{}},
+		"hl-eth":    {ID: "hl-eth", Cash: 400, Positions: map[string]*Position{}},
+		"hl-manual": {ID: "hl-manual", Cash: 200, Positions: map[string]*Position{}},
+	}}
+	accountShared := detectSharedWallets(strategies[:2])
+
+	got, fb := computeTotalPortfolioValue(strategies, state, nil, nil, accountShared)
+	if got != 1000 {
+		t.Errorf("risk path manual fallback: want 1000 (sum member PVs once), got %.2f", got)
+	}
+	if !fb {
+		t.Errorf("risk path manual fallback: expected usedFallback=true")
+	}
+}

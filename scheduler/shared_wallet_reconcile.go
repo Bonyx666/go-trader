@@ -459,6 +459,26 @@ func computeSubsetDisplayValue(
 	return gated + restVal, usedFallback
 }
 
+// riskPathWalletMemberIDs returns perps shared-wallet members plus same-account
+// live HL manual strategies in subset. detectSharedWallets is perps-only, but
+// a live manual on the same HYPERLIQUID_ACCOUNT_ADDRESS is already inside the
+// wallet real balance — exclude its modeled PortfolioValue from the risk-path
+// per-strategy sum when the wallet balance is contributed (#921).
+func riskPathWalletMemberIDs(key SharedWalletKey, perpsMemberIDs []string, subset []StrategyConfig) []string {
+	members := append([]string(nil), perpsMemberIDs...)
+	seen := make(map[string]bool, len(members))
+	for _, id := range members {
+		seen[id] = true
+	}
+	for _, id := range sameAccountLiveManualMembers(key, subset) {
+		if !seen[id] {
+			members = append(members, id)
+			seen[id] = true
+		}
+	}
+	return members
+}
+
 // sameAccountLiveManualMembers returns live HL `manual` strategy IDs that trade
 // from the same on-exchange account as key. detectSharedWallets recognizes only
 // perps (walletKeyRegistry), but a live manual strategy on the same

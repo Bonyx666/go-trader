@@ -188,7 +188,8 @@ func fetchSharedWalletBalances(
 // contained within the subset. If a shared wallet straddles the subset
 // boundary (some members are outside the subset), that wallet's strategies
 // are virtual-summed rather than deduped — a single on-exchange balance
-// cannot be split across a partial subset (#915).
+// cannot be split across a partial subset (#915). Same-account live HL manual
+// strategies are folded into the dedup set via riskPathWalletMemberIDs (#921).
 //
 // accountShared is the shared-wallet map for the full account (all strategies),
 // used to detect straddle boundaries. Pass the result of
@@ -220,7 +221,7 @@ func computeSubsetPortfolioValue(
 	for key, subIDs := range subShared {
 		if len(subIDs) == len(accountShared[key]) {
 			fullyContainedKeys = append(fullyContainedKeys, key)
-			for _, id := range subIDs {
+			for _, id := range riskPathWalletMemberIDs(key, subIDs, subset) {
 				dedupeIDs[id] = true
 			}
 		}
@@ -250,7 +251,7 @@ func computeSubsetPortfolioValue(
 		}
 		usedFallback = true
 		sumPV := 0.0
-		for _, id := range subShared[key] {
+		for _, id := range riskPathWalletMemberIDs(key, subShared[key], subset) {
 			if s, ok := state.Strategies[id]; ok {
 				sumPV += PortfolioValue(s, prices)
 			}
