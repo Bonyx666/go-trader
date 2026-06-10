@@ -304,7 +304,8 @@ func computeTotalPortfolioValue(
 // computeInitialPortfolioPeak returns the initial PortfolioRisk.PeakValue used
 // when no peak has been recorded yet. It uses real wallet balances for shared
 // wallets (#243) so the peak is not inflated by summing the same account
-// multiple times across strategies. Strategies that use capital_pct on a
+// multiple times across strategies. Same-account live HL manual strategies are
+// excluded from the standalone capital sum via riskPathWalletMemberIDs (#921). Strategies that use capital_pct on a
 // non-shared platform fall back to the legacy "wallet balance once per
 // platform" computation (Capital / CapitalPct) so existing single-strategy
 // setups are unaffected.
@@ -323,8 +324,8 @@ func computeInitialPortfolioPeak(strategies []StrategyConfig, fetcher WalletBala
 	}
 	sharedWallets := detectSharedWallets(strategies)
 	sharedStrategyIDs := make(map[string]bool)
-	for _, ids := range sharedWallets {
-		for _, id := range ids {
+	for key, ids := range sharedWallets {
+		for _, id := range riskPathWalletMemberIDs(key, ids, strategies) {
 			sharedStrategyIDs[id] = true
 		}
 	}
@@ -358,7 +359,7 @@ func computeInitialPortfolioPeak(strategies []StrategyConfig, fetcher WalletBala
 		if err != nil {
 			fmt.Printf("[WARN] shared-wallet peak init: balance fetch failed for %s/%s: %v — falling back to summed capital\n",
 				key.Platform, key.Account, err)
-			for _, id := range ids {
+			for _, id := range riskPathWalletMemberIDs(key, ids, strategies) {
 				if sc, ok := byID[id]; ok {
 					total += sc.Capital
 				}
