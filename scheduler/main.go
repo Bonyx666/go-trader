@@ -748,6 +748,11 @@ func main() {
 		// setups (#908).
 		var totalPV float64
 		sharedWallets := detectSharedWallets(cfg.Strategies)
+		// walletBalances is populated in the else branch below (where HL/OKX
+		// state is fetched) and reused by the summary and leaderboard paths
+		// that follow. Empty in the saveFailures>=3 fast-exit branch — those
+		// paths fall back to virtual-sum as before.
+		walletBalances := make(map[SharedWalletKey]float64)
 
 		// Process only due strategies
 		if saveFailures >= 3 {
@@ -869,7 +874,7 @@ func main() {
 			// Fetch HL clearinghouseState once if any consumer needs it:
 			// - shared-wallet risk check (2+ live HL strategies in cfg)
 			// - position sync for at least one due HL strategy
-			walletBalances := make(map[SharedWalletKey]float64)
+			// walletBalances is declared at cycle scope (above) and populated here.
 			var hlPositions []HLPosition
 			var hlStateFetched bool
 			// Fetch clearinghouseState whenever any live HL strategy exists (#356
@@ -2168,18 +2173,15 @@ func main() {
 			} // end if !killSwitchFired
 		}
 
-		// Calculate per-channel values/strategies for channel-level summaries.
-		// Total portfolio value reuses totalPV (shared-wallet-adjusted) computed
-		// earlier in the cycle — summing per-strategy PortfolioValue here would
-		// double-count virtual cash in shared-wallet setups (#908).
+		// Build per-channel strategy lists for channel-level summaries.
+		// Adjusted TOTAL rows are computed per-channel/per-asset below via
+		// computeSubsetPortfolioValue using the hoisted walletBalances map so
+		// shared wallets are not double-counted in TOTAL rows (#915).
 		mu.RLock()
-		channelValue := make(map[string]float64)
 		channelStrats := make(map[string][]StrategyConfig)
 		for _, sc := range cfg.Strategies {
-			if s, ok := state.Strategies[sc.ID]; ok {
-				pv := PortfolioValue(s, prices)
+			if _, ok := state.Strategies[sc.ID]; ok {
 				if chKey := notifier.resolveChannelKey(sc.Platform, sc.Type); chKey != "" {
-					channelValue[chKey] += pv
 					channelStrats[chKey] = append(channelStrats[chKey], sc)
 				}
 			}
@@ -2236,9 +2238,10 @@ func main() {
 						detailKey = chKey + "|" + assetKeys[0]
 					}
 					chDetails := channelTradeDetails[detailKey]
-					chValue := channelValue[chKey]
+					// Compute shared-wallet-adjusted total for TOTAL row (#915).
+					chAdj, _ := computeSubsetPortfolioValue(chStrats, state, prices, walletBalances, sharedWallets)
 					chSharpe := aggregateSharpe(closedByStrategy, chStrats, state, rfr)
-					msgs := FormatCategorySummary(cycle, elapsed, len(dueStrategies), chTrades, chValue, prices, chDetails, chStrats, state, chKey, "", cfg.IntervalSeconds, chSharpe, lifetimeStats, cfg.Regime)
+					msgs := FormatCategorySummary(cycle, elapsed, len(dueStrategies), chTrades, chAdj, prices, chDetails, chStrats, state, chKey, "", cfg.IntervalSeconds, chSharpe, lifetimeStats, cfg.Regime)
 					for _, msg := range msgs {
 						notifier.SendToChannel(chKey, chKey, msg)
 					}
@@ -2247,15 +2250,11 @@ func main() {
 					for _, asset := range assetKeys {
 						assetStrats := assetGroups[asset]
 						assetDetails := channelTradeDetails[chKey+"|"+asset]
-						assetValue := 0.0
-						for _, sc := range assetStrats {
-							if s, ok := state.Strategies[sc.ID]; ok {
-								assetValue += PortfolioValue(s, prices)
-							}
-						}
+						// Compute subset-adjusted total; straddle wallets virtual-sum (#915).
+						assetAdj, _ := computeSubsetPortfolioValue(assetStrats, state, prices, walletBalances, sharedWallets)
 						assetTrades := len(assetDetails)
 						assetSharpe := aggregateSharpe(closedByStrategy, assetStrats, state, rfr)
-						msgs := FormatCategorySummary(cycle, elapsed, len(dueStrategies), assetTrades, assetValue, prices, assetDetails, assetStrats, state, chKey, asset, cfg.IntervalSeconds, assetSharpe, lifetimeStats, cfg.Regime)
+						msgs := FormatCategorySummary(cycle, elapsed, len(dueStrategies), assetTrades, assetAdj, prices, assetDetails, assetStrats, state, chKey, asset, cfg.IntervalSeconds, assetSharpe, lifetimeStats, cfg.Regime)
 						for _, msg := range msgs {
 							notifier.SendToChannel(chKey, chKey, msg)
 						}
@@ -2276,7 +2275,7 @@ func main() {
 		// HTTPS latency can't stall the scheduler cycle.
 		var duePending []pendingLeaderboardSummary
 		if notifier.HasBackends() {
-			duePending = collectDueLeaderboardSummaries(cfg, state, prices, ComputeSharpeByStrategy(closedByStrategy, cfg, state), lifetimeStats)
+			duePending = collectDueLeaderboardSummaries(cfg, state, prices, ComputeSharpeByStrategy(closedByStrategy, cfg, state), lifetimeStats, walletBalances, sharedWallets)
 		}
 
 		if err := SaveStateWithDB(state, cfg, stateDB); err != nil {
@@ -2332,7 +2331,9 @@ func main() {
 			} else {
 				sharpeByStrategy := ComputeSharpeByStrategy(closedByStrategy, cfg, state)
 				mu.RLock()
-				lbMessages := BuildLeaderboardMessages(cfg, state, prices, sharpeByStrategy, lifetimeStats)
+				// Pass hoisted walletBalances so the leaderboard TOTAL rows use
+				// shared-wallet-adjusted values (#915).
+				lbMessages := BuildLeaderboardMessages(cfg, state, prices, sharpeByStrategy, lifetimeStats, walletBalances, sharedWallets)
 				mu.RUnlock()
 				if len(lbMessages) == 0 {
 					fmt.Println("[leaderboard] Auto-post skipped: no strategy state to leaderboard yet")
@@ -2445,13 +2446,11 @@ func runSummaryAndExit(channelKey string, cfg *Config, state *AppState, sdb *Sta
 	}
 	augmentMarksBestEffort(cfg, prices)
 
-	// Calculate channel value.
-	chValue := 0.0
-	for _, sc := range chStrats {
-		if s, ok := state.Strategies[sc.ID]; ok {
-			chValue += PortfolioValue(s, prices)
-		}
-	}
+	// Fetch shared-wallet balances for adjusted TOTAL rows (#915). Must be
+	// done without holding any state lock; best-effort — failure falls back
+	// to the per-strategy virtual sum for the TOTAL row.
+	summaryWalletBalances, _ := fetchSharedWalletBalances(cfg.Strategies, nil)
+	summaryAccountShared := detectSharedWallets(cfg.Strategies)
 
 	// Format and send summary using the same asset-grouping logic as the main loop.
 	closedByStrategy := LoadClosedPositionsByStrategy(sdb, cfg)
@@ -2459,8 +2458,9 @@ func runSummaryAndExit(channelKey string, cfg *Config, state *AppState, sdb *Sta
 	lifetimeStats := loadLifetimeStatsBestEffort(sdb, "[summary]")
 	assetGroups, assetKeys := groupByAsset(chStrats)
 	if len(assetKeys) <= 1 {
+		chAdj, _ := computeSubsetPortfolioValue(chStrats, state, prices, summaryWalletBalances, summaryAccountShared)
 		chSharpe := aggregateSharpe(closedByStrategy, chStrats, state, rfr)
-		msgs := FormatCategorySummary(state.CycleCount, 0, 0, 0, chValue, prices, nil, chStrats, state, channelKey, "", cfg.IntervalSeconds, chSharpe, lifetimeStats, cfg.Regime)
+		msgs := FormatCategorySummary(state.CycleCount, 0, 0, 0, chAdj, prices, nil, chStrats, state, channelKey, "", cfg.IntervalSeconds, chSharpe, lifetimeStats, cfg.Regime)
 		for _, msg := range msgs {
 			notifier.SendToChannel(channelKey, channelKey, msg)
 			fmt.Println(msg)
@@ -2468,14 +2468,9 @@ func runSummaryAndExit(channelKey string, cfg *Config, state *AppState, sdb *Sta
 	} else {
 		for _, asset := range assetKeys {
 			assetStrats := assetGroups[asset]
-			assetValue := 0.0
-			for _, sc := range assetStrats {
-				if s, ok := state.Strategies[sc.ID]; ok {
-					assetValue += PortfolioValue(s, prices)
-				}
-			}
+			assetAdj, _ := computeSubsetPortfolioValue(assetStrats, state, prices, summaryWalletBalances, summaryAccountShared)
 			assetSharpe := aggregateSharpe(closedByStrategy, assetStrats, state, rfr)
-			msgs := FormatCategorySummary(state.CycleCount, 0, 0, 0, assetValue, prices, nil, assetStrats, state, channelKey, asset, cfg.IntervalSeconds, assetSharpe, lifetimeStats, cfg.Regime)
+			msgs := FormatCategorySummary(state.CycleCount, 0, 0, 0, assetAdj, prices, nil, assetStrats, state, channelKey, asset, cfg.IntervalSeconds, assetSharpe, lifetimeStats, cfg.Regime)
 			for _, msg := range msgs {
 				notifier.SendToChannel(channelKey, channelKey, msg)
 				fmt.Println(msg)
@@ -3974,9 +3969,13 @@ func runLeaderboardSummariesAndExit(lcs []LeaderboardSummaryConfig, cfg *Config,
 	prices := fetchPricesForSummary(cfg)
 	sharpeByStrategy := ComputeSharpeByStrategy(LoadClosedPositionsByStrategy(sdb, cfg), cfg, state)
 	lifetimeStats := loadLifetimeStatsBestEffort(sdb, "[leaderboard]")
+	// CLI exit path holds no state lock — safe to fetch wallet balances once
+	// here and reuse across every summary (#915).
+	walletBalances, _ := fetchSharedWalletBalances(cfg.Strategies, nil)
+	accountShared := detectSharedWallets(cfg.Strategies)
 	posted := 0
 	for _, lc := range lcs {
-		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats)
+		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats, walletBalances, accountShared)
 		if msg == "" {
 			fmt.Fprintf(os.Stderr, "No strategies match leaderboard summary platform=%s ticker=%s\n", lc.Platform, lc.Ticker)
 			continue
@@ -4035,7 +4034,7 @@ type pendingLeaderboardSummary struct {
 // optimistically so duplicate posts are avoided if the caller's Discord send
 // fails; same semantics as the previous in-lock implementation. Caller must
 // hold the write lock on state. (#308)
-func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats) []pendingLeaderboardSummary {
+func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[string]float64, sharpeByStrategy map[string]float64, lifetimeStats map[string]LifetimeTradeStats, walletBalances map[SharedWalletKey]float64, accountShared map[SharedWalletKey][]string) []pendingLeaderboardSummary {
 	if len(cfg.LeaderboardSummaries) == 0 {
 		return nil
 	}
@@ -4054,7 +4053,7 @@ func collectDueLeaderboardSummaries(cfg *Config, state *AppState, prices map[str
 		if !last.IsZero() && now.Sub(last) < freq {
 			continue
 		}
-		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats)
+		msg := BuildLeaderboardSummary(lc, cfg, state, prices, sharpeByStrategy, lifetimeStats, walletBalances, accountShared)
 		if msg == "" {
 			continue
 		}

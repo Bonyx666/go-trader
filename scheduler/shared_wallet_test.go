@@ -755,3 +755,160 @@ func TestRebaselinePortfolioPeakAfterPrune_PreventsImmediateKillSwitch(t *testin
 		t.Errorf("expected kill switch inactive after rebaseline; got active")
 	}
 }
+
+// --- computeSubsetPortfolioValue tests (#915) ---
+
+// TestComputeSubsetPortfolioValue_FullyContainedWallet verifies that when all
+// shared-wallet members are in the subset, the real balance is used once (no
+// double-count) — same result as computeTotalPortfolioValue for the whole account.
+func TestComputeSubsetPortfolioValue_FullyContainedWallet(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+
+	allStrategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 5000},
+	}
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-btc": {ID: "hl-btc", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"hl-eth": {ID: "hl-eth", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+		},
+	}
+	walletBalances := map[SharedWalletKey]float64{
+		{Platform: "hyperliquid", Account: "0xtest"}: 8000, // real balance after fees
+	}
+	accountShared := detectSharedWallets(allStrategies)
+
+	// Subset = all strategies → fully contained → real balance used once.
+	got, fb := computeSubsetPortfolioValue(allStrategies, state, nil, walletBalances, accountShared)
+	if got != 8000 {
+		t.Errorf("fully-contained subset: want 8000 (real balance), got %.2f", got)
+	}
+	if fb {
+		t.Errorf("fully-contained subset: expected usedFallback=false")
+	}
+}
+
+// TestComputeSubsetPortfolioValue_StradddlingWalletVirtualSum verifies that when
+// a shared wallet has members OUTSIDE the subset (straddle), the subset members
+// are virtual-summed rather than deduped — the real balance cannot be split.
+func TestComputeSubsetPortfolioValue_StraddlingWalletVirtualSum(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+
+	allStrategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 5000},
+	}
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-btc": {ID: "hl-btc", Cash: 4000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"hl-eth": {ID: "hl-eth", Cash: 6000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+		},
+	}
+	walletBalances := map[SharedWalletKey]float64{
+		{Platform: "hyperliquid", Account: "0xtest"}: 8000,
+	}
+	accountShared := detectSharedWallets(allStrategies)
+
+	// Subset contains only one of two wallet members → straddle → virtual sum.
+	subset := allStrategies[:1] // just hl-btc
+	got, fb := computeSubsetPortfolioValue(subset, state, nil, walletBalances, accountShared)
+	if got != 4000 {
+		t.Errorf("straddling wallet subset: want 4000 (virtual sum of hl-btc only), got %.2f", got)
+	}
+	if fb {
+		t.Errorf("straddling wallet subset: expected usedFallback=false (no dedup attempted)")
+	}
+}
+
+// TestComputeSubsetPortfolioValue_MixedSharedAndNonShared verifies the common
+// case: a shared-wallet channel plus a non-shared standalone strategy.
+func TestComputeSubsetPortfolioValue_MixedSharedAndNonShared(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+
+	allStrategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "spot-btc", Platform: "binanceus", Type: "spot", Capital: 2000},
+	}
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-btc":   {ID: "hl-btc", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"hl-eth":   {ID: "hl-eth", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"spot-btc": {ID: "spot-btc", Cash: 2000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+		},
+	}
+	walletBalances := map[SharedWalletKey]float64{
+		{Platform: "hyperliquid", Account: "0xtest"}: 7500,
+	}
+	accountShared := detectSharedWallets(allStrategies)
+
+	// Subset = all three → fully-contained wallet + non-shared spot.
+	got, fb := computeSubsetPortfolioValue(allStrategies, state, nil, walletBalances, accountShared)
+	want := 7500.0 + 2000.0 // real HL balance + spot PV
+	if got != want {
+		t.Errorf("mixed subset: want %.2f, got %.2f", want, got)
+	}
+	if fb {
+		t.Errorf("mixed subset: expected usedFallback=false")
+	}
+}
+
+// TestComputeSubsetPortfolioValue_MissingBalance verifies that a missing
+// wallet balance triggers usedFallback=true and falls back to virtual sum.
+func TestComputeSubsetPortfolioValue_MissingBalance(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+
+	allStrategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 5000},
+	}
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-btc": {ID: "hl-btc", Cash: 4000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"hl-eth": {ID: "hl-eth", Cash: 6000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+		},
+	}
+	accountShared := detectSharedWallets(allStrategies)
+
+	// walletBalances empty → fallback to virtual sum.
+	got, fb := computeSubsetPortfolioValue(allStrategies, state, nil, nil, accountShared)
+	if got != 10000 {
+		t.Errorf("missing balance: want 10000 (fallback sum), got %.2f", got)
+	}
+	if !fb {
+		t.Errorf("missing balance: expected usedFallback=true")
+	}
+}
+
+// TestComputeTotalPortfolioValue_DelegatesCorrectly verifies that the refactored
+// computeTotalPortfolioValue (delegating to computeSubsetPortfolioValue) gives
+// identical results to the pre-#915 inline implementation for the whole-account case.
+func TestComputeTotalPortfolioValue_DelegatesCorrectly(t *testing.T) {
+	t.Setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0xtest")
+
+	strategies := []StrategyConfig{
+		{ID: "hl-btc", Platform: "hyperliquid", Type: "perps", Args: []string{"sma", "BTC", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "hl-eth", Platform: "hyperliquid", Type: "perps", Args: []string{"rsi", "ETH", "1h", "--mode=live"}, Capital: 5000},
+		{ID: "spot-btc", Platform: "binanceus", Type: "spot", Capital: 2000},
+	}
+	state := &AppState{
+		Strategies: map[string]*StrategyState{
+			"hl-btc":   {ID: "hl-btc", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"hl-eth":   {ID: "hl-eth", Cash: 5000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+			"spot-btc": {ID: "spot-btc", Cash: 2000, Positions: map[string]*Position{}, OptionPositions: map[string]*OptionPosition{}},
+		},
+	}
+	walletBalances := map[SharedWalletKey]float64{
+		{Platform: "hyperliquid", Account: "0xtest"}: 9000,
+	}
+
+	got, fb := computeTotalPortfolioValue(strategies, state, nil, walletBalances, nil)
+	want := 9000.0 + 2000.0 // real HL balance + spot
+	if got != want {
+		t.Errorf("delegation: want %.2f, got %.2f", want, got)
+	}
+	if fb {
+		t.Errorf("delegation: expected usedFallback=false")
+	}
+}

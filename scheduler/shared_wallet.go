@@ -183,6 +183,86 @@ func fetchSharedWalletBalances(
 	return balances, errs
 }
 
+// computeSubsetPortfolioValue returns the portfolio value for a subset of
+// strategies, deduplicating shared wallets only when the wallet is fully
+// contained within the subset. If a shared wallet straddles the subset
+// boundary (some members are outside the subset), that wallet's strategies
+// are virtual-summed rather than deduped — a single on-exchange balance
+// cannot be split across a partial subset (#915).
+//
+// accountShared is the shared-wallet map for the full account (all strategies),
+// used to detect straddle boundaries. Pass the result of
+// detectSharedWallets(allStrategies) so the containment check sees the real
+// membership. When accountShared is nil the subset is treated as the full
+// account (equivalent to calling computeTotalPortfolioValue).
+//
+// walletBalances, state, and prices semantics are identical to
+// computeTotalPortfolioValue.
+func computeSubsetPortfolioValue(
+	subset []StrategyConfig,
+	state *AppState,
+	prices map[string]float64,
+	walletBalances map[SharedWalletKey]float64,
+	accountShared map[SharedWalletKey][]string,
+) (float64, bool) {
+	if accountShared == nil {
+		accountShared = detectSharedWallets(subset)
+	}
+
+	// Detect shared wallets within the subset.
+	subShared := detectSharedWallets(subset)
+
+	// A wallet is "fully contained" when every account member is also in the
+	// subset. Only fully-contained wallets get real-balance dedup; strategies
+	// whose wallet straddles the boundary are virtual-summed instead.
+	dedupeIDs := make(map[string]bool)
+	var fullyContainedKeys []SharedWalletKey
+	for key, subIDs := range subShared {
+		if len(subIDs) == len(accountShared[key]) {
+			fullyContainedKeys = append(fullyContainedKeys, key)
+			for _, id := range subIDs {
+				dedupeIDs[id] = true
+			}
+		}
+	}
+
+	total := 0.0
+
+	// Per-strategy sum for everything NOT in a fully-contained shared wallet
+	// (includes strategies from straddling wallets — virtual-summed).
+	for _, sc := range subset {
+		if dedupeIDs[sc.ID] {
+			continue
+		}
+		if s, ok := state.Strategies[sc.ID]; ok {
+			total += PortfolioValue(s, prices)
+		}
+	}
+
+	// One real-balance contribution per fully-contained shared wallet.
+	// On fetch failure, sum member strategy PVs; usedFallback still freezes
+	// peak ratcheting.
+	usedFallback := false
+	for _, key := range fullyContainedKeys {
+		if bal, ok := walletBalances[key]; ok {
+			total += bal
+			continue
+		}
+		usedFallback = true
+		sumPV := 0.0
+		for _, id := range subShared[key] {
+			if s, ok := state.Strategies[id]; ok {
+				sumPV += PortfolioValue(s, prices)
+			}
+		}
+		fmt.Printf("[WARN] shared-wallet %s/%s: balance fetch missing, falling back to sum(member PV)=$%.2f (peak will NOT be updated this cycle)\n",
+			key.Platform, key.Account, sumPV)
+		total += sumPV
+	}
+
+	return total, usedFallback
+}
+
 // computeTotalPortfolioValue returns the total portfolio value across all
 // strategies, using pre-fetched real exchange balances for shared wallets so
 // the same account is not double-counted across multiple strategies (#243).
@@ -215,50 +295,9 @@ func computeTotalPortfolioValue(
 	if sharedWallets == nil {
 		sharedWallets = detectSharedWallets(strategies)
 	}
-
-	// Build a quick lookup of strategy IDs that belong to a shared wallet.
-	sharedStrategyIDs := make(map[string]bool)
-	for _, ids := range sharedWallets {
-		for _, id := range ids {
-			sharedStrategyIDs[id] = true
-		}
-	}
-
-	total := 0.0
-
-	// Per-strategy sum for everything that does NOT live in a shared wallet.
-	for _, sc := range strategies {
-		if sharedStrategyIDs[sc.ID] {
-			continue
-		}
-		if s, ok := state.Strategies[sc.ID]; ok {
-			total += PortfolioValue(s, prices)
-		}
-	}
-
-	// One real-balance contribution per shared wallet. On fetch failure,
-	// sum member strategy PVs; usedFallback still freezes peak ratcheting.
-	usedFallback := false
-	for key, ids := range sharedWallets {
-		if bal, ok := walletBalances[key]; ok {
-			total += bal
-			continue
-		}
-		usedFallback = true
-		sumPV := 0.0
-		for _, id := range ids {
-			s, ok := state.Strategies[id]
-			if !ok {
-				continue
-			}
-			sumPV += PortfolioValue(s, prices)
-		}
-		fmt.Printf("[WARN] shared-wallet %s/%s: balance fetch missing, falling back to sum(member PV)=$%.2f (peak will NOT be updated this cycle)\n",
-			key.Platform, key.Account, sumPV)
-		total += sumPV
-	}
-
-	return total, usedFallback
+	// Whole-account call: every shared wallet is fully contained in strategies,
+	// so delegating to computeSubsetPortfolioValue gives identical results.
+	return computeSubsetPortfolioValue(strategies, state, prices, walletBalances, sharedWallets)
 }
 
 // computeInitialPortfolioPeak returns the initial PortfolioRisk.PeakValue used
