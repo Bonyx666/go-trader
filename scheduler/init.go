@@ -76,6 +76,7 @@ var knownShortNames = map[string]string{
 	"mean_reversion_pro":    "mrpro",
 	"consolidation_range":   "cr",
 	"mtf_confluence":        "mtfc",
+	"vol_momentum":          "volmom",
 }
 
 // bidirectionalPerpsStrategies lists strategy IDs that emit signal=-1 as a
@@ -95,6 +96,7 @@ var bidirectionalPerpsStrategies = map[string]bool{
 	"mean_reversion_pro":  true, // emits short on overbought reversion in no-trend regimes
 	"consolidation_range": true, // emits short at the top edge of a consolidation box (range-edge mean-reversion)
 	"mtf_confluence":      true, // futures variant (allow_short) shorts LTF pullback rallies in HTF downtrends (#957)
+	"vol_momentum":        true, // emits short on ATR-normalized negative momentum with efficiency confirmation (#959)
 }
 
 func isBidirectionalPerpsStrategy(id string) bool {
@@ -144,6 +146,7 @@ var defaultSpotStrategies = []stratDef{
 	{ID: "momentum_pro", ShortName: "mompro"},
 	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 	{ID: "mtf_confluence", ShortName: "mtfc"},
+	{ID: "vol_momentum", ShortName: "volmom"},
 }
 
 var defaultOptionsStrategies = []stratDef{
@@ -168,6 +171,7 @@ var defaultPerpsStrategies = []stratDef{
 	{ID: "momentum_pro", ShortName: "mompro"},
 	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 	{ID: "mtf_confluence", ShortName: "mtfc"},
+	{ID: "vol_momentum", ShortName: "volmom"},
 }
 
 var defaultFuturesStrategies = []stratDef{
@@ -195,6 +199,7 @@ var defaultFuturesStrategies = []stratDef{
 	{ID: "momentum_pro", ShortName: "mompro"},
 	{ID: "mean_reversion_pro", ShortName: "mrpro"},
 	{ID: "mtf_confluence", ShortName: "mtfc"},
+	{ID: "vol_momentum", ShortName: "volmom"},
 }
 
 // Supported CME futures symbols for the init wizard.
